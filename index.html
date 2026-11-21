@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      try {
+        const theme = localStorage.getItem('quiet-square-theme')
+        if (['dark', 'light', 'system'].includes(theme)) document.documentElement.dataset.theme = theme
+      } catch {}
+    </script>
+    <meta name="description" content="Turn a chess screenshot into an editable position and analyze it privately with Stockfish." />
+    <link rel="icon" type="image/svg+xml" href="./mark.svg" />
+    <title>Quiet Square · Chess screenshot analysis</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#chessboard">Skip to chessboard</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand"><img src="./mark.svg" width="34" height="34" alt="" /><span>Quiet Square</span></div>
+        <div class="header-tools">
+          <div class="privacy"><span data-icon="lock"></span><span class="privacy-long">Runs on your device</span><span class="privacy-short">On-device</span></div>
+          <label class="theme-control"><span data-icon="theme"></span>
+            <select id="theme" aria-label="Color theme">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <h1 class="page-title">Chess analysis</h1>
+
+      <div class="workspace">
+        <section class="board-panel" aria-labelledby="board-heading">
+          <div class="board-heading-row">
+            <div>
+              <h2 id="board-heading">Starting position</h2>
+              <p id="board-subtitle" hidden></p>
+            </div>
+            <div class="board-actions" id="board-actions">
+              <button id="flip-board" class="icon-button" type="button" title="Flip view" aria-label="Flip view" data-icon="flip"></button>
+              <button id="edit-board" class="edit-button" type="button" aria-pressed="false"><span data-icon="edit"></span><span id="edit-label">Edit board</span></button>
+            </div>
+          </div>
+
+          <div id="board-display">
+            <div id="board-frame" class="board-frame">
+              <div id="rank-labels" class="ranks" aria-hidden="true"></div>
+              <div class="board-surface">
+                <div id="chessboard" class="chessboard" role="group" aria-label="Chessboard" tabindex="-1"></div>
+                <svg id="move-arrow" class="move-arrow" viewBox="0 0 800 800" aria-hidden="true"></svg>
+              </div>
+              <div id="file-labels" class="files" aria-hidden="true"></div>
+            </div>
+            <div id="editor" class="editor" hidden>
+              <div class="editor-copy"><strong>Piece editor</strong><span>Choose a piece, then select a square.</span></div>
+              <div id="piece-tray" class="piece-tray" role="group" aria-label="Piece palette"></div>
+            </div>
+            <div id="board-footer" class="board-footer">
+              <span id="orientation-label">White at bottom</span>
+              <button id="rotate-import" type="button" class="text-button" title="Correct how the screenshot was read" hidden>Correct orientation</button>
+              <div id="line-controls" class="line-controls" hidden>
+                <button id="previous" class="icon-button" type="button" aria-label="Previous move" data-icon="chevron-left"></button>
+                <span id="ply-label" aria-live="polite"></span>
+                <button id="next" class="icon-button" type="button" aria-label="Next move" data-icon="chevron-right"></button>
+              </div>
+            </div>
+            <button id="use-preview" type="button" class="text-button" hidden>Analyze from this move</button>
+            <div id="game-history" class="game-history" hidden>
+              <div class="history-heading">
+                <h3 id="history-label">Moves</h3>
+                <div class="line-controls">
+                  <button id="history-previous" class="icon-button" type="button" aria-label="Previous game position" data-icon="chevron-left"></button>
+                  <button id="history-next" class="icon-button" type="button" aria-label="Next game position" data-icon="chevron-right"></button>
+                </div>
+              </div>
+              <div class="history-moves" id="history-moves" role="group" aria-labelledby="history-label"></div>
+            </div>
+          </div>
+
+          <div id="crop-editor" class="crop-editor" hidden>
+            <div id="crop-image-wrap" class="crop-image-wrap">
+              <img id="crop-image" alt="Screenshot to crop" draggable="false" />
+              <div id="crop-rect" class="crop-rect"></div>
+            </div>
+            <div class="crop-sliders">
+              <label>Horizontal<input id="crop-x" type="range" min="0" max="1000" /></label>
+              <label>Vertical<input id="crop-y" type="range" min="0" max="1000" /></label>
+              <label>Size<input id="crop-size" type="range" min="120" max="1000" /></label>
+            </div>
+            <div class="crop-actions">
+              <button id="cancel-crop" type="button" class="small-button">Cancel</button>
+              <button id="scan-crop" type="button" class="primary-button">Scan crop</button>
+            </div>
+          </div>
+          <p id="board-announcement" class="visually-hidden" role="status"></p>
+          <dialog id="promotion" aria-labelledby="promotion-label">
+            <h3 id="promotion-label">Promote pawn</h3>
+            <div id="promotion-pieces" class="promotion-pieces"></div>
+            <form method="dialog"><button type="submit" class="text-button">Cancel</button></form>
+          </dialog>
+        </section>
+
+        <div class="analysis-rail">
+          <section class="panel upload-panel" aria-labelledby="upload-heading">
+            <h2 id="upload-heading">Load a position</h2>
+            <div class="source-tabs" role="tablist" aria-label="Position source">
+              <button id="tab-screenshot" type="button" role="tab" aria-controls="source-screenshot" aria-selected="true">Screenshot</button>
+              <button id="tab-setup" type="button" role="tab" aria-controls="source-setup" aria-selected="false" tabindex="-1">Set up</button>
+              <button id="tab-fen" type="button" role="tab" aria-controls="source-fen" aria-selected="false" tabindex="-1">FEN</button>
+              <button id="tab-pgn" type="button" role="tab" aria-controls="source-pgn" aria-selected="false" tabindex="-1">PGN</button>
+            </div>
+            <div id="source-screenshot" role="tabpanel" aria-labelledby="tab-screenshot">
+              <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif" hidden />
+              <button id="dropzone" class="dropzone" type="button">
+                <span class="upload-icon" data-icon="upload"></span>
+                <span class="drop-title">Drop a screenshot</span>
+                <span class="drop-subtitle"><strong>Choose a file</strong> or paste an image</span>
+              </button>
+
+              <div id="source-preview" class="source-preview" hidden>
+                <img id="source-thumbnail" alt="Uploaded screenshot" />
+                <div class="source-copy">
+                  <span id="source-name"></span>
+                  <button id="crop-button" class="text-button" type="button">Crop &amp; rescan</button>
+                </div>
+                <button id="replace-button" class="icon-button" type="button" title="Replace screenshot" aria-label="Replace screenshot" data-icon="upload"></button>
+                <button id="remove-button" class="icon-button" type="button" title="Remove screenshot" aria-label="Remove screenshot" data-icon="close"></button>
+              </div>
+
+              <div id="scan-progress" class="scan-progress" hidden>
+                <div class="progress-copy"><span id="scan-label" role="status"></span><span id="scan-step"></span></div>
+                <progress id="scan-meter" max="3" value="1" aria-label="Screenshot processing"></progress>
+              </div>
+              <p id="scan-message" class="inline-message" role="status" hidden></p>
+              <p id="scan-error" class="inline-message error" role="alert" hidden></p>
+            </div>
+
+            <div id="source-setup" class="source-form" role="tabpanel" aria-labelledby="tab-setup" hidden>
+              <p>Play moves from the start or place each piece by hand.</p>
+              <div class="source-actions">
+                <button id="setup-start" type="button" class="small-button">Starting position</button>
+                <button id="setup-empty" type="button" class="small-button">Empty board</button>
+              </div>
+            </div>
+
+            <div id="source-fen" class="source-form" role="tabpanel" aria-labelledby="tab-fen" hidden>
+              <label for="fen-input">Position FEN</label>
+              <input id="fen-input" type="text" spellcheck="false" autocomplete="off" placeholder="Paste a complete FEN" />
+              <div class="source-actions">
+                <button id="load-fen" type="button" class="small-button">Load FEN</button>
+                <button id="copy-fen" type="button" class="text-button" disabled>Copy current FEN</button>
+              </div>
+              <p class="inline-message" id="fen-message" role="status" hidden></p>
+            </div>
+
+            <div id="source-pgn" class="source-form" role="tabpanel" aria-labelledby="tab-pgn" hidden>
+              <label for="pgn-input">Game PGN</label>
+              <textarea id="pgn-input" rows="4" spellcheck="false" placeholder="Paste a game or an archive of games"></textarea>
+              <input id="pgn-file" type="file" accept=".pgn,.txt,application/x-chess-pgn,text/plain" hidden />
+              <div class="source-actions">
+                <button id="load-pgn" type="button" class="small-button">Load PGN</button>
+                <button id="choose-pgn" type="button" class="text-button">Choose a PGN file</button>
+              </div>
+              <div id="game-picker" class="game-picker" hidden>
+                <label for="game-select">Imported game</label>
+                <select id="game-select"></select>
+                <button id="open-game" type="button" class="text-button">Open game from start</button>
+              </div>
+              <p class="inline-message" id="pgn-message" role="status" hidden></p>
+            </div>
+          </section>
+
+          <section class="panel setup-panel" aria-labelledby="position-heading">
+            <h2 id="position-heading">Position</h2>
+            <fieldset class="turn-field">
+              <legend>Side to move</legend>
+              <div class="side-switch">
+                <label><input type="radio" name="turn" value="w" /><span><i class="white-side"></i> White</span></label>
+                <label><input type="radio" name="turn" value="b" /><span><i class="black-side"></i> Black</span></label>
+              </div>
+            </fieldset>
+            <details id="position-details" class="position-details">
+              <summary>Position details <span data-icon="chevron-down"></span></summary>
+              <div class="detail-content">
+                <p id="import-note" hidden>A screenshot leaves some game history unknown. Set the fields below if you know them.</p>
+                <fieldset class="castling">
+                  <legend>Castling rights</legend>
+                  <div class="castling-options">
+                    <label><input type="checkbox" value="K" /> White O-O</label>
+                    <label><input type="checkbox" value="Q" /> White O-O-O</label>
+                    <label><input type="checkbox" value="k" /> Black O-O</label>
+                    <label><input type="checkbox" value="q" /> Black O-O-O</label>
+                  </div>
+                </fieldset>
+                <div class="state-fields">
+                  <label>En passant<input id="ep" type="text" maxlength="2" placeholder="e.g. e6" autocomplete="off" spellcheck="false" /></label>
+                  <label>Halfmove<input id="halfmove" type="number" min="0" max="9999" /></label>
+                  <label>Fullmove<input id="fullmove" type="number" min="1" max="9999" /></label>
+                </div>
+              </div>
+            </details>
+            <p id="position-error" class="inline-message error" role="alert" hidden></p>
+            <button id="analyze" class="primary-button" type="button" aria-controls="results"><span data-icon="search"></span><span id="analyze-label">Analyze position</span></button>
+          </section>
+
+          <section id="results" class="panel results-panel" aria-labelledby="results-heading" hidden>
+            <div class="section-heading"><h2 id="results-heading">Next move</h2><span class="engine-tag">Stockfish 19</span></div>
+            <p id="next-move-prompt" class="inline-message">Run Stockfish to compare candidate moves.</p>
+            <div id="engine-results" hidden>
+              <div id="engine-status" class="engine-status">
+                <span class="status-indicator" aria-hidden="true"></span>
+                <span id="engine-status-label" role="status"></span>
+                <span id="engine-depth"></span>
+            </div>
+            <div id="search-track" class="search-track" aria-hidden="true"></div>
+            <p id="engine-loading" class="inline-message" hidden>First load downloads the full 95 MB engine.</p>
+            <p id="engine-error" class="inline-message error" role="alert" hidden></p>
+            <p id="engine-outcomes-label" class="outcome-caption" hidden>Engine estimates · White / Draw / Black</p>
+            <div id="move-list" class="move-list"></div>
+            <button id="deeper" type="button" class="text-button deeper" hidden>Keep searching <span data-icon="search"></span></button>
+            </div>
+            <details id="game-results" class="game-results" open hidden>
+              <summary>Game results <span data-icon="chevron-down"></span></summary>
+              <p id="game-results-source" class="outcome-caption"></p>
+              <table>
+                <thead><tr><th scope="col">Move</th><th scope="col">Games</th><th scope="col">White / Draw / Black</th></tr></thead>
+                <tbody id="game-results-body"></tbody>
+              </table>
+            </details>
+          </section>
+        </div>
+      </div>
+
+      <footer class="site-footer"><span>For studying finished games and puzzles.</span><a href="./licenses.html">Open-source credits</a></footer>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

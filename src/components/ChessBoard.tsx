@@ -6,8 +6,12 @@ import './board-settings.css'
 import {
   BOARD_PREFERENCES_KEY,
   BOARDS,
+  COMMON_BOARDS,
+  COMMON_PIECES,
   DEFAULT_BOARD_PREFERENCES,
   PIECE_SETS,
+  PRESETS,
+  pickerItems,
   boardImage,
   boardStyle,
   loadBoardPreferences,
@@ -93,6 +97,8 @@ export function ChessBoard({
   }, [fen, lastSan, loaded, preferences.sounds, reviewGame, reviewPly])
 
   const pieces = preferences.pieces
+  const [allBoards, setAllBoards] = useState(false)
+  const [allPieces, setAllPieces] = useState(false)
   const highlightedMove = preferences.highlights ? lastMove : null
   const badgeIndex = highlightedMove && moveClass ? displaySquareIndex(highlightedMove.to, orientation) : null
   const placement = fen.split(' ')[0]
@@ -159,24 +165,37 @@ export function ChessBoard({
         <summary><span dangerouslySetInnerHTML={{ __html: icon('gear', 15) }} /> Board settings</summary>
         <div className="board-settings-panel">
           <h3>Board settings</h3>
+          <p>Presets</p>
+          <div className="theme-grid preset-grid" role="group" aria-label="Board presets">
+            {PRESETS.map(preset => (
+              <ThemeChoice
+                key={preset.name}
+                name={preset.name}
+                board={preset.board}
+                pieces={preset.pieces}
+                selected={preferences.theme === preset.board && pieces === preset.pieces}
+                onChoose={() => setPreferences(p => ({ ...p, theme: preset.board, pieces: preset.pieces }))}
+              />
+            ))}
+          </div>
           <p>Board</p>
           <div className="theme-grid" role="group" aria-label="Board theme">
-            {BOARDS.map(board => (
-              <button type="button" key={board.id} className="theme-choice" aria-pressed={preferences.theme === board.id} onClick={() => setPreferences(p => ({ ...p, theme: board.id }))}>
-                <span className="theme-preview" style={{ backgroundImage: `url('${boardImage(board.id, true)}')` }} aria-hidden="true"><img src={pieceSource('N', pieces)} alt="" loading="lazy" /><img src={pieceSource('k', pieces)} alt="" loading="lazy" /></span>
-                <span>{board.name}</span>
-              </button>
+            {pickerItems(BOARDS, COMMON_BOARDS, preferences.theme, allBoards).map(board => (
+              <ThemeChoice key={board.id} name={board.name} board={board.id} pieces={pieces} selected={preferences.theme === board.id} onChoose={() => setPreferences(p => ({ ...p, theme: board.id }))} />
             ))}
           </div>
+          <button type="button" className="theme-more" aria-expanded={allBoards} onClick={() => setAllBoards(value => !value)}>
+            {allBoards ? 'Show fewer boards' : `Show ${BOARDS.length - COMMON_BOARDS.size} more boards`}
+          </button>
           <p>Pieces</p>
           <div className="theme-grid" role="group" aria-label="Piece set">
-            {PIECE_SETS.map(set => (
-              <button type="button" key={set.id} className="theme-choice" aria-pressed={pieces === set.id} onClick={() => setPreferences(p => ({ ...p, pieces: set.id }))}>
-                <span className="theme-preview" style={{ backgroundImage: `url('${boardImage(preferences.theme, true)}')` }} aria-hidden="true"><img src={pieceSource('N', set.id)} alt="" loading="lazy" /><img src={pieceSource('k', set.id)} alt="" loading="lazy" /></span>
-                <span>{set.name}</span>
-              </button>
+            {pickerItems(PIECE_SETS, COMMON_PIECES, pieces, allPieces).map(set => (
+              <ThemeChoice key={set.id} name={set.name} board={preferences.theme} pieces={set.id} selected={pieces === set.id} onChoose={() => setPreferences(p => ({ ...p, pieces: set.id }))} />
             ))}
           </div>
+          <button type="button" className="theme-more" aria-expanded={allPieces} onClick={() => setAllPieces(value => !value)}>
+            {allPieces ? 'Show fewer piece sets' : `Show ${PIECE_SETS.length - COMMON_PIECES.size} more piece sets`}
+          </button>
           <div className="board-options">
             {([['coordinates', 'Show coordinates'], ['highlights', 'Highlight last move'], ['legalMoves', 'Show legal moves'], ['sounds', 'Play move sounds']] as const).map(([key, label]) => (
               <label key={key}><span>{label}</span><input type="checkbox" checked={preferences[key]} onChange={event => setPreferences(p => ({ ...p, [key]: event.target.checked }))} /></label>
@@ -192,7 +211,7 @@ export function ChessBoard({
         <div className="eval-bar" aria-label={`Evaluation ${evalLabel ?? ''}`}>
           <div className="eval-bar-black" style={{ height: `${(1 - evalPercent) * 100}%` }} />
           <div className="eval-bar-white" style={{ height: `${evalPercent * 100}%` }} />
-          {evalLabel ? <span>{evalLabel}</span> : null}
+          {evalLabel ? <span className={evalPercent >= 0.5 ? 'eval-label white-ahead' : 'eval-label black-ahead'}>{evalLabel.replace(/^[+-]/, '')}</span> : null}
         </div>
       ) : null}
       <div className="board-surface">
@@ -269,6 +288,24 @@ export function ChessBoard({
       </div>
     </div>
     </div>
+  )
+}
+
+function ThemeChoice({ name, board, pieces, selected, onChoose }: {
+  name: string
+  board: string
+  pieces: string
+  selected: boolean
+  onChoose: () => void
+}) {
+  return (
+    <button type="button" className="theme-choice" aria-pressed={selected} onClick={onChoose}>
+      <span className="theme-preview" style={{ backgroundImage: `url('${boardImage(board, true)}')` }} aria-hidden="true">
+        <img src={pieceSource('N', pieces)} alt="" loading="lazy" />
+        <img src={pieceSource('k', pieces)} alt="" loading="lazy" />
+      </span>
+      <span>{name}</span>
+    </button>
   )
 }
 

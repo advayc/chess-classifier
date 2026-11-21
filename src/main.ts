@@ -2,8 +2,12 @@ import { DEFAULT_POSITION, type Chess, type Square } from 'chess.js'
 import {
   BOARD_PREFERENCES_KEY,
   BOARDS,
+  COMMON_BOARDS,
+  COMMON_PIECES,
   PIECE_SETS,
+  PRESETS,
   applyBoardTheme,
+  pickerItems,
   boardImage,
   loadBoardPreferences,
   pieceSource,
@@ -136,6 +140,12 @@ let boardPreferences: BoardPreferences = loadBoardPreferences()
 const boardFrame = $('board-frame')
 const themeGrid = $('theme-grid')
 const pieceGrid = $('piece-grid')
+const presetGrid = $('preset-grid')
+const moreBoards = $<HTMLButtonElement>('more-boards')
+const morePieces = $<HTMLButtonElement>('more-pieces')
+const expanded = { boards: false, pieces: false }
+moreBoards.addEventListener('click', () => { expanded.boards = !expanded.boards; renderBoardSettings() })
+morePieces.addEventListener('click', () => { expanded.pieces = !expanded.pieces; renderBoardSettings() })
 const prefCoordinates = $<HTMLInputElement>('pref-coordinates')
 const prefHighlights = $<HTMLInputElement>('pref-highlights')
 const prefLegalMoves = $<HTMLInputElement>('pref-legal-moves')
@@ -164,10 +174,19 @@ function themeChoice(name: string, selected: boolean, board: string, pieces: str
 
 function renderBoardSettings(): void {
   const { theme, pieces } = boardPreferences
-  themeGrid.replaceChildren(...BOARDS.map(board =>
+  presetGrid.replaceChildren(...PRESETS.map(preset =>
+    themeChoice(preset.name, theme === preset.board && pieces === preset.pieces, preset.board, preset.pieces, () => {
+      boardPreferences = { ...boardPreferences, theme: preset.board, pieces: preset.pieces }
+      setBoardPreference('theme', preset.board)
+    })))
+  themeGrid.replaceChildren(...pickerItems(BOARDS, COMMON_BOARDS, theme, expanded.boards).map(board =>
     themeChoice(board.name, theme === board.id, board.id, pieces, () => setBoardPreference('theme', board.id))))
-  pieceGrid.replaceChildren(...PIECE_SETS.map(set =>
+  pieceGrid.replaceChildren(...pickerItems(PIECE_SETS, COMMON_PIECES, pieces, expanded.pieces).map(set =>
     themeChoice(set.name, pieces === set.id, theme, set.id, () => setBoardPreference('pieces', set.id))))
+  moreBoards.setAttribute('aria-expanded', String(expanded.boards))
+  moreBoards.textContent = expanded.boards ? 'Show fewer boards' : `Show ${BOARDS.length - COMMON_BOARDS.size} more boards`
+  morePieces.setAttribute('aria-expanded', String(expanded.pieces))
+  morePieces.textContent = expanded.pieces ? 'Show fewer piece sets' : `Show ${PIECE_SETS.length - COMMON_PIECES.size} more piece sets`
   prefCoordinates.checked = boardPreferences.coordinates
   prefHighlights.checked = boardPreferences.highlights
   prefLegalMoves.checked = boardPreferences.legalMoves
@@ -634,7 +653,7 @@ function renderBoard() {
   applyBoardTheme(boardFrame, boardPreferences)
   const fileEdge = state.orientation === 'white' ? 'a' : 'h'
   const rankEdge = state.orientation === 'white' ? '1' : '8'
-  const coordKey = boardPreferences.coordinates ? `${state.orientation}` : 'off'
+  const coordKey = `${boardPreferences.coordinates ? state.orientation : 'off'}:${boardPreferences.pieces}`
   for (const [displayIndex, tile] of tiles.entries()) {
     const index = boardIndex(displayIndex)
     const square = squareAt(index)

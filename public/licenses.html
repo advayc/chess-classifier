@@ -5,6 +5,7 @@
 <title>Open-source credits · Chess Engine</title>
 <link rel="icon" href="./mark.svg">
 <script>
+  if (window.top !== window.self) window.top.location.replace(location.href)
   try {
     const theme = localStorage.getItem('quiet-square-theme')
     if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
@@ -19,7 +20,7 @@
   li { margin-block: 1rem; }
 </style>
 <main>
-  <a href="./">Chess Engine</a>
+  <a href="/">Chess Engine</a>
   <h1>Open-source credits</h1>
   <ul>
     <li><strong>Stockfish 19</strong> runs via Nathan Rugg’s Stockfish.js 19.0.1 WebAssembly port. <a href="./runtime/stockfish-license.txt">GPLv3 license</a> · <a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Corresponding source and build instructions</a></li>

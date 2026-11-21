@@ -9,6 +9,33 @@ export type PieceSet = { id: string; name: string }
 export const BOARDS: BoardTheme[] = themes.boards
 export const PIECE_SETS: PieceSet[] = themes.pieces
 
+/** Popular Chess.com picks shown first; the rest sit behind "Show more". */
+export const COMMON_BOARDS = new Set([
+  '9rdwe', 'brown', '4fs27', 'dark_wood', 'walnut', 'marble', 'glass', 'icy_sea', 'tournament', 'purple', 'light', 'metal',
+])
+export const COMMON_PIECES = new Set([
+  'ejgfv', 'classic', 'wood', 'neo_wood', 'alpha', 'glass', 'game_room', 'club', 'tournament', 'marble', 'metal', 'icy_sea',
+])
+
+export type BoardPreset = { name: string; board: string; pieces: string }
+
+/** Board and piece pairings that Chess.com ships together. */
+export const PRESETS: BoardPreset[] = [
+  { name: 'Classic', board: '9rdwe', pieces: 'ejgfv' },
+  { name: 'Wood', board: 'dark_wood', pieces: 'wood' },
+  { name: 'Walnut', board: 'walnut', pieces: 'neo_wood' },
+  { name: 'Tournament', board: 'tournament', pieces: 'tournament' },
+  { name: 'Brown', board: 'brown', pieces: 'classic' },
+  { name: 'Glass', board: 'glass', pieces: 'glass' },
+  { name: 'Marble', board: 'marble', pieces: 'marble' },
+  { name: 'Icy Sea', board: 'icy_sea', pieces: 'icy_sea' },
+]
+
+/** Common entries first, the rest only when expanded; the current pick always stays visible. */
+export function pickerItems<T extends { id: string }>(items: T[], common: Set<string>, selected: string, expanded: boolean): T[] {
+  return expanded ? items : items.filter(item => common.has(item.id) || item.id === selected)
+}
+
 export type BoardPreferences = {
   theme: string
   pieces: string

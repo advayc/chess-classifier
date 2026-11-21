@@ -193,34 +193,10 @@
       "dark": "#ec94a4"
     },
     {
-      "id": "my2xa",
-      "name": "Chess The Musical",
-      "light": "#d7d4d4",
-      "dark": "#807b76"
-    },
-    {
-      "id": "bju81",
-      "name": "Event - Naroditsky Memorial",
-      "light": "#fbfae9",
-      "dark": "#cea861"
-    },
-    {
-      "id": "z4m3d",
-      "name": "Event - Esports World Cup 2026",
-      "light": "#f7f7f7",
-      "dark": "#ccaa6c"
-    },
-    {
       "id": "6m5lc",
       "name": "Sky and Sea",
       "light": "#8cbccd",
       "dark": "#044985"
-    },
-    {
-      "id": "ohdxn",
-      "name": "Band Class",
-      "light": "#ecddb7",
-      "dark": "#908f92"
     }
   ],
   "pieces": [
@@ -379,10 +355,6 @@
     {
       "id": "3d_plastic",
       "name": "3D - Plastic"
-    },
-    {
-      "id": "ca09k",
-      "name": "Band Class"
     }
   ]
 }

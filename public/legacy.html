@@ -21,7 +21,7 @@
 
     <main class="page">
       <div class="page-heading">
-        <div><h1 class="page-title">Chess Engine</h1><nav aria-label="App mode"><a href="/">Review</a> · <strong>Position</strong></nav></div>
+        <div><h1 class="page-title">Chess Engine</h1><nav aria-label="App mode"><a href="/" target="_top">Review</a> · <strong>Position</strong></nav></div>
         <button id="theme-toggle" class="icon-button" type="button" title="Switch to light mode" aria-label="Switch to light mode">
           <span data-icon="sun"></span>
         </button>
@@ -47,10 +47,14 @@
                 <summary><span data-icon="gear"></span> Board settings</summary>
                 <div class="board-settings-panel">
                   <h3>Board settings</h3>
+                  <p>Presets</p>
+                  <div id="preset-grid" class="theme-grid preset-grid" role="group" aria-label="Board presets"></div>
                   <p>Board</p>
                   <div id="theme-grid" class="theme-grid" role="group" aria-label="Board theme"></div>
+                  <button id="more-boards" type="button" class="theme-more" aria-expanded="false"></button>
                   <p>Pieces</p>
                   <div id="piece-grid" class="theme-grid" role="group" aria-label="Piece set"></div>
+                  <button id="more-pieces" type="button" class="theme-more" aria-expanded="false"></button>
                   <div class="board-options">
                     <label><span>Show coordinates</span><input id="pref-coordinates" type="checkbox" /></label>
                     <label><span>Highlight last move</span><input id="pref-highlights" type="checkbox" /></label>
@@ -279,7 +283,7 @@
               </table>
             </details>
 
-      <footer class="site-footer"><span>For studying finished games and puzzles. Boards, pieces, and sounds from <a href="https://www.chess.com/">Chess.com</a>.</span><a href="./licenses.html">Open-source credits</a></footer>
+      <footer class="site-footer"><span>For studying finished games and puzzles. Boards, pieces, and sounds from <a href="https://www.chess.com/" target="_blank" rel="noopener">Chess.com</a>.</span><a href="/licenses.html" target="_top">Open-source credits</a></footer>
     </main>
 
     <script type="module" src="/runtime/position-app.js"></script>

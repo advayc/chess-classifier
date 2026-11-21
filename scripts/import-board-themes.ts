@@ -25,6 +25,8 @@ const config = JSON.parse(await readFile(join(source, 'default-config.json'), 'u
   pieces: { collections: Record<string, { readable_name: string }> }
 }
 const PIECES = ['wk', 'wq', 'wr', 'wb', 'wn', 'wp', 'bk', 'bq', 'br', 'bb', 'bn', 'bp']
+// Limited-time event and promo themes that clutter the picker.
+const SKIP = new Set(['bju81', 'z4m3d', 'my2xa', 'ohdxn', 'ca09k'])
 
 await rm(out, { recursive: true, force: true })
 await mkdir(join(out, 'boards'), { recursive: true })
@@ -52,7 +54,7 @@ async function squareColor(file: string, column: number, row: number): Promise<s
 const boards = []
 for (const [id, { readable_name: name }] of Object.entries(config.boards.collections)) {
   const file = join(source, 'boards', `${id}.png`)
-  if (!existsSync(file)) continue
+  if (SKIP.has(id) || !existsSync(file)) continue
   await sharp(file).resize(1024, 1024).webp({ quality: 82 }).toFile(join(out, 'boards', `${id}.webp`))
   await sharp(file).resize(128, 128).webp({ quality: 80 }).toFile(join(out, 'boards', `${id}-thumb.webp`))
   // a8 is a light square and b8 a dark one.
@@ -62,7 +64,7 @@ for (const [id, { readable_name: name }] of Object.entries(config.boards.collect
 const pieces = []
 for (const [id, { readable_name: name }] of Object.entries(config.pieces.collections)) {
   const directory = join(source, 'pieces', id)
-  if (!PIECES.every(piece => existsSync(join(directory, `${piece}.png`)))) continue
+  if (SKIP.has(id) || !PIECES.every(piece => existsSync(join(directory, `${piece}.png`)))) continue
   await mkdir(join(out, 'pieces', id), { recursive: true })
   for (const piece of PIECES) {
     await sharp(join(directory, `${piece}.png`)).webp({ quality: 90, alphaQuality: 100 }).toFile(join(out, 'pieces', id, `${piece}.webp`))

@@ -788,20 +788,24 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   background: #f4f1ea;
   border-top: 1px solid rgba(0,0,0,.14);
 }
-.review-board-frame .eval-bar span {
+/* Chess.com style: the score sits at the winning side's end, in that side's contrasting ink. */
+.review-board-frame .eval-bar .eval-label {
   position: absolute;
-  left: 50%;
-  bottom: .28rem;
+  left: 0;
+  right: 0;
   z-index: 2;
-  transform: translateX(-50%);
-  padding: .12rem .22rem;
-  border-radius: 3px;
-  background: rgba(23,23,23,.82);
-  color: #fff;
-  font: 700 .68rem ui-monospace, monospace;
-  line-height: 1.15;
+  overflow: hidden;
+  text-align: center;
+  font-size: .7rem;
+  font-weight: 750;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
   white-space: nowrap;
+  pointer-events: none;
 }
+.review-board-frame .eval-bar .eval-label.white-ahead { bottom: .45rem; color: #312e2b; }
+.review-board-frame .eval-bar .eval-label.black-ahead { top: .45rem; color: #f4f1ea; }
 .review-board-frame .board-surface { border-radius: 3px; }
 .review-footer { flex-wrap: wrap; }
 .review-lines, .game-list { list-style: none; margin: .65rem 0 0; padding: 0; display: grid; gap: .35rem; }

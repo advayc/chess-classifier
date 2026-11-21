@@ -1094,7 +1094,7 @@ export function ReviewApp() {
       </div>
 
       <footer className="site-footer">
-        <span>Full-game Stockfish review in your browser. Boards, pieces, move icons, and sounds from <a href="https://www.chess.com/">Chess.com</a>.</span>
+        <span>Full-game Stockfish review in your browser. Boards, pieces, move icons, and sounds from <a href="https://www.chess.com/" target="_blank" rel="noopener">Chess.com</a>.</span>
         <a href="/licenses.html">Open-source credits</a>
       </footer>
     </div>

@@ -33,6 +33,7 @@
               <p id="board-subtitle" hidden></p>
             </div>
             <div class="board-actions" id="board-actions">
+              <button id="reset-position" class="icon-button" type="button" title="Reset to starting position" aria-label="Reset to starting position" data-icon="retry"></button>
               <button id="flip-board" class="icon-button" type="button" title="Flip view" aria-label="Flip view" data-icon="flip"></button>
               <button id="edit-board" class="edit-button" type="button" aria-pressed="false"><span data-icon="edit"></span><span id="edit-label">Edit board</span></button>
             </div>
@@ -192,10 +193,7 @@
           </section>
 
           <section class="panel setup-panel" aria-labelledby="position-heading">
-            <div class="section-heading">
-              <h2 id="position-heading">Position</h2>
-              <button id="reset-position" type="button" class="text-button">Reset</button>
-            </div>
+            <h2 id="position-heading">Position</h2>
             <fieldset class="turn-field">
               <legend>Side to move</legend>
               <div class="side-switch">

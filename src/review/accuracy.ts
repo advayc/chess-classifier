@@ -1,24 +1,19 @@
 import type { Color } from 'chess.js'
 import type { MoveClass } from './classify'
 
-/** Cap accuracy contribution by classification (Chess.com-inspired weights). */
-const WEIGHT: Record<MoveClass, number> = {
-  brilliant: 1,
-  great: 1,
-  best: 1,
-  excellent: 0.9,
-  good: 0.7,
-  book: 1,
-  inaccuracy: 0.4,
-  mistake: 0.15,
-  blunder: 0,
-  miss: 0.1,
-}
-
-export function accuracyFor(classes: MoveClass[]): number {
-  if (!classes.length) return 100
-  const sum = classes.reduce((total, label) => total + WEIGHT[label], 0)
-  return Math.round((1000 * sum) / classes.length) / 10
+/** Estimate move quality from the loss in engine-evaluated winning chances.
+ * This is a transparent approximation, not Chess.com's proprietary CAPS2 score.
+ */
+export function accuracyFor(moves: { dropPct: number; label: MoveClass }[]): number {
+  if (!moves.length) return 0
+  const scores = moves.map(move => {
+    if (move.label === 'book') return 100
+    const loss = Math.max(0, Math.min(100, move.dropPct))
+    return Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1668))
+  })
+  const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length
+  const harmonic = scores.some(score => score === 0) ? 0 : scores.length / scores.reduce((sum, score) => sum + 1 / score, 0)
+  return Math.round((mean + harmonic) * 5) / 10
 }
 
 /** Rough performance rating from accuracy; not a true Elo. */

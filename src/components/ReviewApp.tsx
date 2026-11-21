@@ -636,7 +636,7 @@ export function ReviewApp() {
         </section>
 
         <div className="analysis-rail">
-          <section className="panel">
+          {(!openKey || showHistory) ? <section className="panel">
             <form className="source-form" onSubmit={onImport}>
               <div className="review-load-heading">
                 <h2>Load a game</h2>
@@ -742,8 +742,15 @@ export function ReviewApp() {
               />
               {error ? <p className="inline-message error" role="alert">{error}</p> : null}
             </form>
-          </section>
+          </section> : null}
 
+          {openKey && !showHistory && busy ? (
+            <div className="panel review-loading" role="status">
+              <span>{progress ? `Analyzed ${progress.done} / ${progress.total} moves` : 'Opening game…'}</span>
+              {progress ? <button type="button" className="text-button" onClick={cancelReview}>Cancel</button> : null}
+            </div>
+          ) : null}
+          {openKey && !showHistory && error ? <p className="inline-message error" role="alert">{error}</p> : null}
           {list.length && !showHistory ? (
             <button type="button" className="text-button history-return" onClick={() => setShowHistory(true)}>
               ← Game history ({list.length})
@@ -788,18 +795,12 @@ export function ReviewApp() {
           {summary ? (
             <section className="panel review-scorecard">
               <h2>Game review</h2>
-              <div className="review-player-scores">
-                <div>
-                  <span className="review-player-name">{game?.white || 'White'}</span>
-                  <strong>{summary.whiteAccuracy}%</strong>
-                  <span className="review-player-rating">Game rating {summary.whiteRating ?? '—'}</span>
-                </div>
-                <div>
-                  <span className="review-player-name">{game?.black || 'Black'}</span>
-                  <strong>{summary.blackAccuracy}%</strong>
-                  <span className="review-player-rating">Game rating {summary.blackRating ?? '—'}</span>
-                </div>
+              <div className="review-stats" aria-label="Game statistics">
+                <div className="review-stats-header"><span></span><span>{game?.white || 'White'}</span><span>{game?.black || 'Black'}</span></div>
+                <div className="review-stats-row"><span>Accuracy</span><strong className="stat-white">{summary.whiteAccuracy.toFixed(1)}%</strong><strong className="stat-black">{summary.blackAccuracy.toFixed(1)}%</strong></div>
+                <div className="review-stats-row"><span>Estimated rating</span><strong className="stat-white">{summary.whiteRating ?? '—'}</strong><strong className="stat-black">{summary.blackRating ?? '—'}</strong></div>
               </div>
+              <p className="rating-note">Accuracy is an engine-based estimate. Rating is a rough estimate, not an official Elo.{busy && progress ? ' Values update during analysis.' : ''}</p>
               <EvalGraph graph={review.graph} plies={review.plies} currentPly={ply} onSelect={goPly} />
               <div className="review-class-table">
                 {CLASS_ORDER.map(label => {

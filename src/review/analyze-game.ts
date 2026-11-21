@@ -2,7 +2,7 @@ import { Chess } from 'chess.js'
 import { Engine } from '../engine'
 import { positionKey, uciMove } from '../game'
 import type { EngineInfo, GameRecord, OpeningSample, RecordedMove } from '../types'
-import { accuracyFor, estimatedRating, splitByColor } from './accuracy'
+import { accuracyFor, estimatedRating } from './accuracy'
 import { classifyMove, emptyClassCounts, type MoveClass } from './classify'
 import openings from './openings.json'
 import { materialSacrifice } from './material'
@@ -176,8 +176,9 @@ export async function analyzeGame(
 }
 
 export function makeReview(game: GameRecord, plies: ReviewedPly[], graph: number[]): GameReview {
-  const labeled = plies.map(ply => ({ color: ply.move.color, label: ply.label }))
-  const byColor = splitByColor(labeled)
+  const byColor = { w: plies.filter(ply => ply.move.color === 'w'), b: plies.filter(ply => ply.move.color === 'b') }
+  const whiteAccuracy = accuracyFor(byColor.w)
+  const blackAccuracy = accuracyFor(byColor.b)
   const counts = { w: emptyClassCounts(), b: emptyClassCounts() }
   for (const ply of plies) counts[ply.move.color][ply.label]++
 
@@ -204,10 +205,10 @@ export function makeReview(game: GameRecord, plies: ReviewedPly[], graph: number
     graph,
     opening,
     summary: {
-      whiteAccuracy: accuracyFor(byColor.w),
-      blackAccuracy: accuracyFor(byColor.b),
-      whiteRating: estimatedRating(accuracyFor(byColor.w), byColor.w.length),
-      blackRating: estimatedRating(accuracyFor(byColor.b), byColor.b.length),
+      whiteAccuracy: whiteAccuracy,
+      blackAccuracy: blackAccuracy,
+      whiteRating: estimatedRating(whiteAccuracy, byColor.w.length),
+      blackRating: estimatedRating(blackAccuracy, byColor.b.length),
       counts,
       keyMoments: swings,
     },

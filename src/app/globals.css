@@ -753,17 +753,18 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 }
 .review-board-frame {
   --coordinate-size: 0rem;
-  grid-template-columns: 1.25rem minmax(0, 1fr);
+  grid-template-columns: 1.75rem minmax(0, 1fr);
+  column-gap: .5rem;
 }
 .review-board-frame .eval-bar {
   grid-column: 1;
   grid-row: 1;
   position: relative;
-  width: 1.25rem;
+  width: 1.75rem;
   height: 100%;
   min-height: 18rem;
   overflow: hidden;
-  border-radius: 3px 0 0 3px;
+  border-radius: 3px;
   background: #171717;
   border: 1px solid var(--border);
 }
@@ -798,7 +799,7 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   line-height: 1.15;
   white-space: nowrap;
 }
-.review-board-frame .board-surface { border-radius: 0 3px 3px 0; }
+.review-board-frame .board-surface { border-radius: 3px; }
 .review-footer { flex-wrap: wrap; }
 .review-lines, .game-list { list-style: none; margin: .65rem 0 0; padding: 0; display: grid; gap: .35rem; }
 .review-lines .move-row { cursor: default; }
@@ -807,7 +808,8 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   flex-direction: column;
 }
 .review-page .workspace { flex: 1; }
-.review-workspace { grid-template-columns: minmax(18rem, 1fr) minmax(22rem, 26rem); }
+.page:has(#mode-panel-review:not([hidden])) { max-width: 76rem; }
+.review-workspace { grid-template-columns: minmax(18rem, 1fr) minmax(25rem, 31rem); }
 .review-workspace .board-panel {
   align-self: start;
   width: 100%;
@@ -1122,8 +1124,43 @@ button.paired-move:hover { background: color-mix(in srgb, white 5%, transparent)
 .mark-brilliant, .mark-great { fill: #1baca6; }
 .eval-graph input { display: block; width: 100%; }
 
-@media (max-width: 46rem) {
+@media (max-width: 52rem) {
   .review-workspace { grid-template-columns: minmax(0, 1fr); }
   .review-workspace .board-panel { max-width: none; }
 
 }
+
+.review-loading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--secondary); font-size: .85rem; }
+
+.review-player-rating b { display: block; margin-top: .2rem; color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.rating-note { color: var(--secondary); font-size: .72rem; line-height: 1.4; margin: .55rem 0; }
+
+button.history-return {
+  display: flex;
+  width: 100%;
+  min-height: 3rem;
+  justify-content: flex-start;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+}
+button.history-return:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
+button.history-return:focus-visible { outline-offset: -3px; }
+
+.review-stats { margin-top: .8rem; }
+.review-stats-header, .review-stats-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(4rem, .65fr) minmax(4rem, .65fr); align-items: center; gap: .5rem; }
+.review-stats-header { color: var(--secondary); font-size: .72rem; padding: 0 0 .5rem; }
+.review-stats-header span:not(:first-child) { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-stats-row { border-top: 1px solid var(--border); padding: .65rem 0; font-size: .82rem; font-weight: 620; }
+.review-stats-row strong { text-align: center; padding: .4rem .2rem; border-radius: .3rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
+.review-stats-row .stat-white { background: #eee; color: #222; }
+.review-stats-row .stat-black { background: #343434; color: #fff; }
+.eval-slider-label { display: flex; justify-content: space-between; gap: .5rem; color: var(--secondary); font-size: .7rem; margin-top: .7rem; }
+.eval-graph input[type='range'] { appearance: none; -webkit-appearance: none; height: 6px; border-radius: 999px; margin: .75rem 0 .65rem; cursor: pointer; }
+.eval-graph input[type='range']::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--accent); }
+.eval-graph input[type='range']::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--accent); }
+
+.eval-graph { margin-top: 1rem; }
+.eval-graph-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-size: .8rem; }
+.eval-graph-heading span { color: var(--secondary); font-size: .72rem; }
+.eval-graph svg { border: 1px solid var(--border); border-radius: 4px; }

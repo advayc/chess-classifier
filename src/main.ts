@@ -10,6 +10,7 @@ import {
 } from './board-preferences'
 import { createCropEditor } from './crop'
 import { playChessSound, prepareChessAudio } from './chess-sound'
+import { boardArrowPath } from './arrow'
 import { createDetectionView, type Detection } from './detection-view'
 import { Engine } from './engine'
 import { gameResults, positionKey, recordMove, uciMove } from './game'
@@ -757,15 +758,12 @@ function renderArrow(move: { from: string; to: string } | undefined | null): voi
     svg.replaceChildren()
     return
   }
-  const from = boardIndex(indexOfSquare(move.from))
-  const to = boardIndex(indexOfSquare(move.to))
-  const x1 = (from % 8) * 100 + 50
-  const y1 = Math.floor(from / 8) * 100 + 50
-  const x2 = (to % 8) * 100 + 50
-  const y2 = Math.floor(to / 8) * 100 + 50
-  const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI
-  const length = Math.hypot(x2 - x1, y2 - y1)
-  svg.innerHTML = `<path transform="translate(${x1} ${y1}) rotate(${angle})" d="M 0 -8 H ${length - 22} V -19 L ${length + 8} 0 L ${length - 22} 19 V 8 H 0 Q -8 8 -8 0 Q -8 -8 0 -8 Z"/>`
+  const center = (square: string) => {
+    const index = boardIndex(indexOfSquare(square))
+    return { x: (index % 8) * 100 + 50, y: Math.floor(index / 8) * 100 + 50 }
+  }
+  const d = boardArrowPath(center(move.from), center(move.to))
+  svg.innerHTML = d ? `<path d="${d}"/>` : ''
 }
 
 $<HTMLButtonElement>('edit-board').addEventListener('click', () => {

@@ -14,6 +14,7 @@ import {
   type BoardPreferences,
 } from '../board-preferences'
 import { playChessSound, prepareChessAudio } from '../chess-sound'
+import { boardArrowPath } from '../arrow'
 import { icon } from '../icons'
 import { FILES, indexOfSquare, pieceName } from '../position'
 import { ClassIcon, classColor } from '../review/class-icons'
@@ -274,23 +275,9 @@ function displaySquareIndex(square: string, orientation: 'white' | 'black') {
 function arrowPath(from: string, to: string, orientation: 'white' | 'black') {
   const center = (square: string) => {
     const index = displaySquareIndex(square, orientation)
-    const file = index % 8
-    const rank = Math.floor(index / 8)
-    return { x: file * 100 + 50, y: rank * 100 + 50 }
+    return { x: (index % 8) * 100 + 50, y: Math.floor(index / 8) * 100 + 50 }
   }
-  const start = center(from)
-  const end = center(to)
-  const dx = end.x - start.x
-  const dy = end.y - start.y
-  const length = Math.hypot(dx, dy)
-  if (!length) return null
-  const point = (along: number, across: number) => {
-    const x = start.x + (dx * along - dy * across) / length
-    const y = start.y + (dy * along + dx * across) / length
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }
-  const neck = length - 34
-  return `M${point(19, -9)} L${point(neck, -9)} ${point(neck, -22)} ${point(length, 0)} ${point(neck, 22)} ${point(neck, 9)} ${point(19, 9)} Z`
+  return boardArrowPath(center(from), center(to))
 }
 
 export function fenAtPly(startFen: string, moves: { from: string; to: string; uci: string }[], ply: number): string {

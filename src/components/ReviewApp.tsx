@@ -3,6 +3,8 @@
 import { Chess, DEFAULT_POSITION, type Move } from 'chess.js'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Engine } from '../engine'
+import { loadBoardPreferences } from '../board-preferences'
+import { playChessSound } from '../chess-sound'
 import { uciMove } from '../game'
 import { icon } from '../icons'
 import openingSample from '../opening-sample.json'
@@ -24,17 +26,22 @@ import {
 } from '../review/import-games'
 
 const LIMIT_OPTIONS: Record<GameLimit['by'], { value: string; label: string; limit: GameLimit }[]> = {
-  games: [50, 100, 250, 500].map(count => ({ value: String(count), label: String(count), limit: { by: 'games', count } })),
+  games: [
+    ...[50, 100, 250, 500].map(count => ({ value: String(count), label: String(count), limit: { by: 'games', count } as GameLimit })),
+    { value: 'all', label: 'All', limit: { by: 'games', count: Infinity } },
+  ],
   time: [
     { value: '7', label: 'Week', limit: { by: 'time', days: 7 } },
     { value: '30', label: 'Month', limit: { by: 'time', days: 30 } },
     { value: '90', label: '3 months', limit: { by: 'time', days: 90 } },
     { value: '365', label: 'Year', limit: { by: 'time', days: 365 } },
+    { value: 'all', label: 'All time', limit: { by: 'time', days: Infinity } },
   ],
 }
 
 function limitValue(limit: GameLimit): string {
-  return String(limit.by === 'games' ? limit.count : limit.days)
+  const amount = limit.by === 'games' ? limit.count : limit.days
+  return Number.isFinite(amount) ? String(amount) : 'all'
 }
 
 function moreLabel(limit: GameLimit): string {
@@ -332,6 +339,7 @@ export function ReviewApp() {
       )
       setReview(result)
       setPly(0)
+      if (loadBoardPreferences().sounds) playChessSound('notify')
     } catch (err) {
       if (err instanceof Error && err.message === 'cancelled') setError('Review cancelled.')
       else setError(err instanceof Error ? err.message : 'Review failed.')
@@ -393,7 +401,16 @@ export function ReviewApp() {
         setListSource(result.kind === 'chesscom-user' ? 'chesscom' : 'lichess')
         setListUser(pager?.username ?? '')
         setHasMore(pager?.hasMore ?? false)
-        if (!result.list.length) {
+        let total = result.list.length
+        while (pager?.unlimited && pager.hasMore && pagerRef.current === pager) {
+          setParseProgress(`Loading games… ${total} found`)
+          const more = await pager.next()
+          if (pagerRef.current !== pager) break
+          total += more.length
+          setList(current => [...current, ...more])
+          setHasMore(pager.hasMore)
+        }
+        if (!total) {
           setError(pager?.hasMore && limit.by === 'time'
             ? 'No games in that time range. Load an earlier range or pick a longer one.'
             : 'No games matched that username and setup.')

@@ -63,6 +63,10 @@ export class GamePager {
     this.#filter = filter
   }
 
+  get unlimited(): boolean {
+    return !Number.isFinite(this.limit.by === 'games' ? this.limit.count : this.limit.days)
+  }
+
   get hasMore(): boolean {
     return this.#buffer.length > 0 || !this.#exhausted
   }
@@ -70,6 +74,11 @@ export class GamePager {
   /** Next page: `count` games, or the next `days` window. Later windows skip empty stretches. */
   async next(onProgress?: (found: number) => void): Promise<ListedGame[]> {
     this.#pages += 1
+    if (this.unlimited) {
+      // "All" streams one provider batch at a time so the list can grow while it loads.
+      while (!this.#buffer.length && !this.#exhausted) await this.#fetch()
+      return this.#buffer.splice(0)
+    }
     if (this.limit.by === 'games') {
       while (this.#buffer.length < this.limit.count && !this.#exhausted) {
         await this.#fetch()

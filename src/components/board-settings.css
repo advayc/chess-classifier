@@ -55,8 +55,7 @@
 }
 .board-move-class svg { display: block; width: 100%; height: auto; }
 .board-move-class svg > circle { stroke: #fff7e7; stroke-width: .8; }
-.board-frame .review-arrow { z-index: 1; fill: #99b632; opacity: .87; }
-.board-frame .review-arrow path { stroke: #35431d; stroke-width: 1.4; stroke-linejoin: round; }
+.board-frame .review-arrow { z-index: 1; fill: #9cc542; opacity: .8; }
 
 /* Position page: match review board gutter when using on-square coordinates. */
 .board-frame.hide-coordinates {

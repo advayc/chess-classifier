@@ -1,9 +1,9 @@
 type Cue = 'move' | 'capture' | 'notify'
 
 const sources: Record<Cue, string> = {
-  move: 'https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/move-self.mp3',
-  capture: 'https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/capture.mp3',
-  notify: 'https://images.chesscomfiles.com/chess-themes/sounds/_MP3_/default/notify.mp3',
+  move: '/sounds/move-self.mp3',
+  capture: '/sounds/capture.mp3',
+  notify: '/sounds/notify.mp3',
 }
 const players = new Map<Cue, HTMLAudioElement>()
 

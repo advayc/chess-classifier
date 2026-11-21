@@ -1,10 +1,11 @@
-export function connectSourceTabs(tabs) {
-  function select(id, focus = false) {
+export function connectSourceTabs(tabs: HTMLElement[]): (id: string, focus?: boolean) => void {
+  function select(id: string, focus = false): void {
     for (const tab of tabs) {
       const active = tab.id === id
       tab.setAttribute('aria-selected', String(active))
       tab.tabIndex = active ? 0 : -1
-      document.getElementById(tab.getAttribute('aria-controls')).hidden = !active
+      const panel = document.getElementById(tab.getAttribute('aria-controls') ?? '')
+      if (panel) panel.hidden = !active
       if (active && focus) tab.focus()
     }
   }
@@ -12,12 +13,12 @@ export function connectSourceTabs(tabs) {
     tab.addEventListener('click', () => select(tab.id))
     tab.addEventListener('keydown', event => {
       const last = tabs.length - 1
-      const next = {
+      const next = ({
         ArrowLeft: (index + last) % tabs.length,
         ArrowRight: (index + 1) % tabs.length,
         Home: 0,
         End: last,
-      }[event.key]
+      } as Record<string, number>)[event.key]
       if (next === undefined) return
       event.preventDefault()
       select(tabs[next].id, true)

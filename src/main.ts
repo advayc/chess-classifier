@@ -1,27 +1,95 @@
-import '@fontsource-variable/instrument-sans/wght.css'
-import './style.css'
-import { DEFAULT_POSITION } from 'chess.js'
-import { createCropEditor } from './crop.js'
-import { Engine } from './engine.js'
-import { gameResults, positionKey, recordMove, uciMove } from './game.js'
-import { createHistoryView } from './history-view.js'
-import { icon } from './icons.js'
-import { outcomeBar } from './outcomes.js'
-import { connectSourceTabs } from './source-tabs.js'
+import { DEFAULT_POSITION, type Chess, type Square } from 'chess.js'
+import {
+  BOARD_PREFERENCES_KEY,
+  THEMES,
+  WOOD_THEMES,
+  applyBoardTheme,
+  loadBoardPreferences,
+  saveBoardPreferences,
+  type BoardPreferences,
+} from './board-preferences'
+import { createCropEditor } from './crop'
+import { playChessSound, prepareChessAudio } from './chess-sound'
+import { createDetectionView, type Detection } from './detection-view'
+import { Engine } from './engine'
+import { gameResults, positionKey, recordMove, uciMove } from './game'
+import { createHistoryView } from './history-view'
+import { icon } from './icons'
+import { outcomeBar } from './outcomes'
+import { checkPgnSource, parsePgn } from './pgn-client'
+import { connectSourceTabs } from './source-tabs'
 import {
   CASTLING, FILES, canCastle, fromFen, fromFenInput, fromPlacement,
   indexOfSquare, lineNotation, pieceName, replayLine, squareAt, validatePosition,
-} from './position.js'
+  type LineMove,
+} from './position'
+import type { CropRect } from './crop'
+import type {
+  EngineInfo, GameRecord, Move, OpeningRow, OpeningSample, OutcomeCounts, Position, RecordedMove, ValidatedPosition,
+} from './types'
 
-const $ = id => document.getElementById(id)
-const $$ = selector => [...document.querySelectorAll(selector)]
-const runtime = new URL('./runtime/', document.baseURI).href
+type Origin = 'start' | 'screenshot' | 'fen' | 'manual' | 'game' | 'play'
+type Side = 'white' | 'black'
+
+interface AnalysisLine {
+  info: EngineInfo
+  line: LineMove[]
+}
+interface Analysis {
+  fen: string
+  turn: 'w' | 'b'
+  status: string
+  stage: 'loading' | 'primary' | 'alternatives'
+  running: boolean
+  lines: AnalysisLine[]
+  depth: number
+  error: string
+}
+interface AppState {
+  position: Position
+  origin: Origin
+  orientation: Side
+  uncertain: Set<number>
+  editing: boolean
+  palette: string
+  cursor: number
+  cropping: boolean
+  file: File | null
+  screenshotUrl: string | null
+  scanId: number
+  scanning: boolean
+  scanFailed: boolean
+  analysis: Analysis | null
+  selected: number
+  ply: number
+  current: ValidatedPosition | null
+  selection: string
+  targets: Move[]
+  game: GameRecord | null
+  games: GameRecord[]
+  opening: OpeningSample | null
+  gameStats: boolean
+  pgnLoading: boolean
+}
+
+function $<T extends HTMLElement | SVGElement = HTMLElement>(id: string): T {
+  const element = document.getElementById(id)
+  if (!element) throw new Error(`Missing element #${id}`)
+  return element as unknown as T
+}
+const $$ = <T extends HTMLElement = HTMLElement>(selector: string): T[] => [...document.querySelectorAll<T>(selector)]
+const runtime = new URL('/runtime/', location.origin).href
 const engine = new Engine(runtime)
 const cropEditor = createCropEditor({
-  wrap: $('crop-image-wrap'), image: $('crop-image'), outline: $('crop-rect'),
-  horizontal: $('crop-x'), vertical: $('crop-y'), size: $('crop-size'),
+  wrap: $('crop-image-wrap'), image: $<HTMLImageElement>('crop-image'), outline: $('crop-rect'),
+  horizontal: $<HTMLInputElement>('crop-x'), vertical: $<HTMLInputElement>('crop-y'), size: $<HTMLInputElement>('crop-size'),
 })
-const state = {
+const detectionView = createDetectionView({
+  details: $<HTMLDetailsElement>('detection'), reveal: $<HTMLButtonElement>('show-detection'), svg: $<SVGSVGElement>('detection-image'),
+  photo: $<SVGImageElement>('detection-photo'), outline: $<SVGRectElement>('detection-outline'), squares: $<SVGGElement>('detection-squares'),
+  count: $('detection-count'), zoom: $<HTMLButtonElement>('detection-zoom'), readout: $('detection-readout'),
+})
+const state: AppState = {
   position: fromFen(DEFAULT_POSITION), origin: 'start', orientation: 'white',
   uncertain: new Set(), editing: false, palette: 'P', cursor: 0, cropping: false,
   file: null, screenshotUrl: null, scanId: 0, scanning: false, scanFailed: false,
@@ -30,30 +98,121 @@ const state = {
   opening: null, gameStats: false, pgnLoading: false,
 }
 
-for (const item of $$('[data-icon]')) item.innerHTML = icon(item.dataset.icon)
+for (const item of $$('[data-icon]')) item.innerHTML = icon(item.dataset.icon ?? '')
 const selectSource = connectSourceTabs($$('.source-tabs [role=tab]'))
 const renderHistory = createHistoryView({
   container: $('game-history'), moves: $('history-moves'), heading: $('history-label'),
-  previous: $('history-previous'), next: $('history-next'), navigate: navigateGame,
+  previous: $<HTMLButtonElement>('history-previous'), next: $<HTMLButtonElement>('history-next'), navigate: navigateGame,
 })
 
-const theme = $('theme')
-theme.value = document.documentElement.dataset.theme || 'dark'
-theme.addEventListener('change', () => {
-  document.documentElement.dataset.theme = theme.value
-  try { localStorage.setItem('quiet-square-theme', theme.value) } catch {}
+function currentTheme() {
+  return document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+}
+
+function renderThemeToggle() {
+  const dark = currentTheme() === 'dark'
+  const next = dark ? 'light' : 'dark'
+  const button = $<HTMLButtonElement>('theme-toggle')
+  button.innerHTML = icon(dark ? 'sun' : 'moon')
+  button.title = `Switch to ${next} mode`
+  button.setAttribute('aria-label', `Switch to ${next} mode`)
+}
+
+function setTheme(theme: 'light' | 'dark'): void {
+  document.documentElement.dataset.theme = theme
+  try { localStorage.setItem('chess-engine-theme', theme) } catch {}
+  renderThemeToggle()
+}
+
+$<HTMLButtonElement>('theme-toggle').addEventListener('click', () => {
+  setTheme(currentTheme() === 'dark' ? 'light' : 'dark')
+})
+renderThemeToggle()
+
+let boardPreferences: BoardPreferences = loadBoardPreferences()
+const boardFrame = $('board-frame')
+const themeGrid = $('theme-grid')
+const prefCoordinates = $<HTMLInputElement>('pref-coordinates')
+const prefHighlights = $<HTMLInputElement>('pref-highlights')
+const prefLegalMoves = $<HTMLInputElement>('pref-legal-moves')
+const prefSounds = $<HTMLInputElement>('pref-sounds')
+
+function renderBoardSettings(): void {
+  themeGrid.replaceChildren(...THEMES.map(([name, light, dark]) => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'theme-choice'
+    button.setAttribute('aria-pressed', String(boardPreferences.theme === name))
+    const preview = document.createElement('span')
+    preview.className = `theme-preview${WOOD_THEMES.has(name) ? ' wood-preview' : ''}`
+    preview.style.setProperty('--preview-light', light)
+    preview.style.setProperty('--preview-dark', dark)
+    preview.setAttribute('aria-hidden', 'true')
+    preview.append(pieceImage('N'), pieceImage('k'))
+    const label = document.createElement('span')
+    label.textContent = name
+    button.append(preview, label)
+    button.addEventListener('click', () => {
+      boardPreferences = { ...boardPreferences, theme: name }
+      saveBoardPreferences(boardPreferences)
+      applyBoardTheme(boardFrame, boardPreferences)
+      renderBoardSettings()
+    })
+    return button
+  }))
+  prefCoordinates.checked = boardPreferences.coordinates
+  prefHighlights.checked = boardPreferences.highlights
+  prefLegalMoves.checked = boardPreferences.legalMoves
+  prefSounds.checked = boardPreferences.sounds
+}
+
+function setBoardPreference<K extends keyof BoardPreferences>(key: K, value: BoardPreferences[K]): void {
+  boardPreferences = { ...boardPreferences, [key]: value }
+  saveBoardPreferences(boardPreferences)
+  applyBoardTheme(boardFrame, boardPreferences)
+  renderBoardSettings()
+  renderBoard()
+}
+
+for (const [input, key] of [
+  [prefCoordinates, 'coordinates'],
+  [prefHighlights, 'highlights'],
+  [prefLegalMoves, 'legalMoves'],
+  [prefSounds, 'sounds'],
+] as const) {
+  input.addEventListener('change', () => setBoardPreference(key, input.checked))
+}
+
+window.addEventListener('pointerup', event => {
+  if (!event.isTrusted || !boardPreferences.sounds) return
+  void prepareChessAudio()
+}, { once: false })
+window.addEventListener('keydown', event => {
+  if (!event.isTrusted || !boardPreferences.sounds) return
+  void prepareChessAudio()
 })
 
-function pieceImage(piece) {
+applyBoardTheme(boardFrame, boardPreferences)
+renderBoardSettings()
+
+window.addEventListener('storage', event => {
+  if (event.key !== BOARD_PREFERENCES_KEY) return
+  boardPreferences = loadBoardPreferences()
+  applyBoardTheme(boardFrame, boardPreferences)
+  renderBoardSettings()
+  renderBoard()
+})
+
+function pieceImage(piece: string): HTMLImageElement {
   const image = document.createElement('img')
   const side = piece === piece.toUpperCase() ? 'w' : 'b'
-  image.src = `./pieces/${side}${piece.toUpperCase()}.svg`
+  image.src = `/pieces/${side}${piece.toUpperCase()}.svg`
   image.alt = ''
   image.draggable = false
   return image
 }
 
-function showMessage(element, message = '') {
+function showMessage(element: HTMLElement, message = ''): void {
   if (element.textContent !== message) element.textContent = message
   element.hidden = !message
 }
@@ -65,11 +224,11 @@ function clearAnalysis() {
   state.selected = 0
   $('engine-results').hidden = true
   $('next-move-prompt').hidden = false
-  $('results').hidden = !state.gameStats
+  $('results').hidden = !state.analysis
   updateAction()
 }
 
-function setPosition(position, origin, { game = null, cursor = 0, editing = false } = {}) {
+function setPosition(position: Position, origin: Origin, { game = null, cursor = 0, editing = false }: { game?: GameRecord | null; cursor?: number; editing?: boolean } = {}): void {
   clearAnalysis()
   state.position = position
   state.origin = origin
@@ -87,7 +246,7 @@ function afterPositionEdit() {
   clearAnalysis()
   state.game = null
   clearSelection()
-  if (state.origin === 'start' || state.origin === 'game' || state.origin === 'play') state.origin = 'manual'
+  if (state.origin !== 'screenshot') state.origin = 'manual'
   showMessage($('position-error'))
   showMessage($('fen-message'))
   renderSetup()
@@ -102,17 +261,17 @@ function clearSelection() {
 
 function renderSetup() {
   const { position } = state
-  for (const input of $$('[name=turn]')) input.checked = input.value === position.turn
-  for (const input of $$('.castling input')) {
+  for (const input of $$<HTMLInputElement>('[name=turn]')) input.checked = input.value === position.turn
+  for (const input of $$<HTMLInputElement>('.castling input')) {
     input.checked = position.castling.includes(input.value)
     input.disabled = !canCastle(position.squares, input.value)
   }
-  $('ep').value = position.ep === '-' ? '' : position.ep
-  $('halfmove').value = position.halfmove
-  $('fullmove').value = position.fullmove
+  $<HTMLInputElement>('ep').value = position.ep === '-' ? '' : position.ep
+  $<HTMLInputElement>('halfmove').value = position.halfmove
+  $<HTMLInputElement>('fullmove').value = position.fullmove
   $('import-note').hidden = state.origin !== 'screenshot'
   state.current = validatePosition(position)
-  $('copy-fen').disabled = !state.current.fen
+  $<HTMLButtonElement>('copy-fen').disabled = !state.current?.fen
   renderGameResults()
   updateAction()
 }
@@ -121,30 +280,49 @@ function updateAction() {
   const running = state.analysis?.running
   $('analyze-label').textContent = running ? 'Stop search' : 'Analyze position'
   const busy = state.scanning || state.cropping || state.pgnLoading
-  $('analyze').disabled = busy || state.editing || state.scanFailed
-  for (const id of ['load-fen', 'setup-start', 'setup-empty', 'load-pgn', 'choose-pgn', 'open-game']) $(id).disabled = busy
-  $('crop-button').disabled = busy
-  $('replace-button').disabled = state.cropping || state.pgnLoading
-  $('dropzone').disabled = state.pgnLoading
-  $('edit-board').disabled = busy || state.scanFailed
-  $('remove-button').disabled = state.cropping
+  $<HTMLButtonElement>('analyze').disabled = busy || state.editing || state.scanFailed
+  for (const id of ['load-fen', 'setup-start', 'setup-empty', 'load-pgn', 'choose-pgn', 'open-game']) $<HTMLButtonElement>(id).disabled = busy
+  $<HTMLButtonElement>('crop-button').disabled = busy
+  $<HTMLButtonElement>('show-detection').disabled = state.cropping
+  $<HTMLButtonElement>('replace-button').disabled = state.cropping || state.pgnLoading
+  $<HTMLButtonElement>('dropzone').disabled = state.pgnLoading
+  $<HTMLButtonElement>('edit-board').disabled = busy || state.scanFailed
+  $<HTMLButtonElement>('remove-button').disabled = state.cropping
 }
 
-function canPlay() {
-  return state.current?.chess && !state.editing && !state.scanning && !state.scanFailed &&
+/** The current position's rules engine. Only call this when the position is valid. */
+function currentChess(): Chess {
+  return state.current?.chess as Chess
+}
+
+function canPlay(): boolean {
+  return Boolean(state.current?.chess) && !state.editing && !state.scanning && !state.scanFailed &&
     !state.cropping && !state.pgnLoading && !state.ply
 }
 
 const board = $('chessboard')
 const DRAG_THRESHOLD = 6
-let pieceDrag = null
+interface PieceDrag {
+  pointerId: number
+  displayIndex: number
+  fromIndex: number
+  fromSquare: string
+  piece: string
+  editing: boolean
+  originTile: HTMLElement
+  startX: number
+  startY: number
+  active: boolean
+  ghost: HTMLImageElement | null
+}
+let pieceDrag: PieceDrag | null = null
 let suppressSquareClick = false
 
 function reduceMotion() {
   return matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
-function applySquareEdit(indices) {
+function applySquareEdit(indices: number[]): void {
   state.position.castling = [...state.position.castling].filter(right => CASTLING[right] &&
     canCastle(state.position.squares, right)).join('') || '-'
   if (state.position.ep !== '-') {
@@ -155,7 +333,7 @@ function applySquareEdit(indices) {
   afterPositionEdit()
 }
 
-function freeMovePiece(fromIndex, toIndex) {
+function freeMovePiece(fromIndex: number, toIndex: number): void {
   if (fromIndex === toIndex) {
     renderBoard()
     return
@@ -166,20 +344,20 @@ function freeMovePiece(fromIndex, toIndex) {
   applySquareEdit([fromIndex, toIndex])
 }
 
-function displayIndexAt(clientX, clientY) {
+function displayIndexAt(clientX: number, clientY: number): number {
   const el = document.elementFromPoint(clientX, clientY)
-  const tile = el?.closest?.('.square')
+  const tile = el?.closest?.('.square') as HTMLButtonElement | null
   if (!tile || !board.contains(tile)) return -1
   return tiles.indexOf(tile)
 }
 
-function moveGhost(ghost, clientX, clientY, size) {
+function moveGhost(ghost: HTMLElement, clientX: number, clientY: number, size: number): void {
   ghost.style.width = `${size}px`
   ghost.style.height = `${size}px`
   ghost.style.transform = `translate(${clientX - size / 2}px, ${clientY - size / 2}px)`
 }
 
-function endPieceDrag({ clientX, clientY, cancel = false } = {}) {
+function endPieceDrag({ clientX = 0, clientY = 0, cancel = false }: { clientX?: number; clientY?: number; cancel?: boolean } = {}): void {
   const drag = pieceDrag
   if (!drag) return
   pieceDrag = null
@@ -229,19 +407,24 @@ function endPieceDrag({ clientX, clientY, cancel = false } = {}) {
   const originRect = drag.originTile.getBoundingClientRect()
   const size = originRect.width
   const duration = reduceMotion() ? 0 : 160
-  drag.ghost.classList.add('returning')
-  drag.ghost.style.transition = `transform ${duration}ms ease-out`
-  moveGhost(drag.ghost, originRect.left + size / 2, originRect.top + size / 2, size)
+  const ghost = drag.ghost
+  if (!ghost) {
+    finish()
+    return
+  }
+  ghost.classList.add('returning')
+  ghost.style.transition = `transform ${duration}ms ease-out`
+  moveGhost(ghost, originRect.left + size / 2, originRect.top + size / 2, size)
   const settle = () => {
     finish()
     clearSelection()
     renderBoard()
   }
   if (!duration) settle()
-  else drag.ghost.addEventListener('transitionend', settle, { once: true })
+  else ghost.addEventListener('transitionend', settle, { once: true })
 }
 
-function onPiecePointerMove(event) {
+function onPiecePointerMove(event: PointerEvent): void {
   const drag = pieceDrag
   if (!drag || drag.pointerId !== event.pointerId) return
   const dx = event.clientX - drag.startX
@@ -253,7 +436,7 @@ function onPiecePointerMove(event) {
     if (drag.editing) clearSelection()
     else {
       state.selection = drag.fromSquare
-      state.targets = state.current.chess.moves({ square: drag.fromSquare, verbose: true })
+      state.targets = currentChess().moves({ square: drag.fromSquare as Square, verbose: true })
     }
     renderBoard()
     const rect = drag.originTile.getBoundingClientRect()
@@ -266,18 +449,18 @@ function onPiecePointerMove(event) {
     moveGhost(ghost, event.clientX, event.clientY, rect.width)
   }
   event.preventDefault()
-  moveGhost(drag.ghost, event.clientX, event.clientY, drag.originTile.getBoundingClientRect().width)
+  if (drag.ghost) moveGhost(drag.ghost, event.clientX, event.clientY, drag.originTile.getBoundingClientRect().width)
   const over = displayIndexAt(event.clientX, event.clientY)
   for (const [i, square] of tiles.entries()) {
     square.classList.toggle('drag-over', i === over && over !== drag.displayIndex)
   }
 }
 
-function onPiecePointerUp(event) {
+function onPiecePointerUp(event: PointerEvent) {
   if (pieceDrag?.pointerId === event.pointerId) endPieceDrag(event)
 }
 
-function onPiecePointerCancel(event) {
+function onPiecePointerCancel(event: PointerEvent) {
   if (pieceDrag?.pointerId === event.pointerId) endPieceDrag({ cancel: true })
 }
 
@@ -312,8 +495,8 @@ const tiles = Array.from({ length: 64 }, (_, displayIndex) => {
     const piece = state.position.squares[index]
     if (!piece) return
     if (playing) {
-      const chess = state.current.chess
-      const onBoard = chess.get(squareAt(index))
+      const chess = currentChess()
+      const onBoard = chess.get(squareAt(index) as Square)
       if (!onBoard || onBoard.color !== chess.turn()) return
     }
     pieceDrag = {
@@ -354,14 +537,14 @@ window.addEventListener('pointermove', onPiecePointerMove, { passive: false })
 window.addEventListener('pointerup', onPiecePointerUp)
 window.addEventListener('pointercancel', onPiecePointerCancel)
 
-document.querySelector('.skip-link').addEventListener('click', event => {
+document.querySelector('.skip-link')?.addEventListener('click', event => {
   if (state.cropping) return
   event.preventDefault()
   if (state.editing || canPlay()) tiles[state.cursor].focus()
   else board.focus()
 })
 
-const palette = [...'KQRBNPkqrbnp', ''].map(piece => {
+const palette = [...'KQRBNP', ...'kqrbnp', ''].map(piece => {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'piece-choice'
@@ -373,15 +556,41 @@ const palette = [...'KQRBNPkqrbnp', ''].map(piece => {
     state.palette = piece
     renderPalette()
   })
-  $('piece-tray').append(button)
   return { button, piece }
 })
 
-function renderPalette() {
-  for (const { button, piece } of palette) button.setAttribute('aria-pressed', String(state.palette === piece))
+function arrangePalette() {
+  const whiteAtBottom = state.orientation === 'white'
+  const buttons = new Map(palette.map(item => [item.piece, item.button]))
+  const white = [...'KQRBNP'].map(piece => buttons.get(piece)!)
+  const black = [...'kqrbnp'].map(piece => buttons.get(piece)!)
+  const erase = buttons.get('')!
+  const top = $('tray-top')
+  const bottom = $('tray-bottom')
+  if (whiteAtBottom) {
+    top.setAttribute('aria-label', 'Black pieces')
+    bottom.setAttribute('aria-label', 'White pieces')
+    top.replaceChildren(...black)
+    bottom.replaceChildren(...white)
+  } else {
+    top.setAttribute('aria-label', 'White pieces')
+    bottom.setAttribute('aria-label', 'Black pieces')
+    top.replaceChildren(...white)
+    bottom.replaceChildren(...black)
+  }
+  const eraseSlot = document.getElementById('erase-slot')
+  if (eraseSlot) eraseSlot.replaceChildren(erase)
+  const show = state.editing && !state.cropping
+  top.hidden = !show
+  bottom.hidden = !show
 }
 
-function boardIndex(index) {
+function renderPalette() {
+  for (const { button, piece } of palette) button.setAttribute('aria-pressed', String(state.palette === piece))
+  arrangePalette()
+}
+
+function boardIndex(index: number): number {
   return state.orientation === 'white' ? index : 63 - index
 }
 
@@ -402,49 +611,67 @@ function renderBoard() {
   const activePly = line[state.ply - 1]
   const nextPly = line[state.ply]
   const squares = activePly ? fromFen(activePly.fen).squares : state.position.squares
-  const lastMove = activePly || state.game?.moves[state.game.ply - 1]
+  const lastMove = activePly || state.game?.moves[(state.game.ply ?? 0) - 1]
   const playing = Boolean(canPlay())
   const checkedKing = !activePly && state.current?.chess?.isCheck() ?
     squares.indexOf(state.position.turn === 'w' ? 'K' : 'k') : -1
   board.classList.toggle('editing', state.editing)
   board.classList.toggle('playable', playing)
   $('editor').hidden = !state.editing
-  $('edit-board').setAttribute('aria-pressed', String(state.editing))
+  arrangePalette()
+  $<HTMLButtonElement>('edit-board').setAttribute('aria-pressed', String(state.editing))
   $('edit-label').textContent = state.editing ? 'Done editing' : 'Edit board'
   $('orientation-label').textContent = state.orientation === 'white' ? 'White at bottom' : 'Black at bottom'
-  $('rotate-import').hidden = state.origin !== 'screenshot' || state.editing || Boolean(line.length)
+  $<HTMLButtonElement>('rotate-import').hidden = state.origin !== 'screenshot' || state.editing || Boolean(line.length)
 
-  const firstRank = state.orientation === 'white' ? '87654321' : '12345678'
-  const orderedFiles = state.orientation === 'white' ? FILES : [...FILES].reverse().join('')
-  $('rank-labels').innerHTML = [...firstRank].map(rank => `<span>${rank}</span>`).join('')
-  $('file-labels').innerHTML = [...orderedFiles].map(file => `<span>${file}</span>`).join('')
+  applyBoardTheme(boardFrame, boardPreferences)
+  const fileEdge = state.orientation === 'white' ? 'a' : 'h'
+  const rankEdge = state.orientation === 'white' ? '1' : '8'
+  const coordKey = boardPreferences.coordinates ? `${state.orientation}` : 'off'
   for (const [displayIndex, tile] of tiles.entries()) {
     const index = boardIndex(displayIndex)
     const square = squareAt(index)
     const piece = squares[index]
-    if (tile.dataset.piece !== piece) {
-      tile.replaceChildren(...(piece ? [pieceImage(piece)] : []))
+    if (tile.dataset.piece !== piece || tile.dataset.coords !== coordKey) {
+      const children: Node[] = []
+      if (boardPreferences.coordinates && square[0] === fileEdge) {
+        const rank = document.createElement('span')
+        rank.className = 'board-coordinate rank-coordinate'
+        rank.textContent = square[1]
+        children.push(rank)
+      }
+      if (boardPreferences.coordinates && square[1] === rankEdge) {
+        const file = document.createElement('span')
+        file.className = 'board-coordinate file-coordinate'
+        file.textContent = square[0]
+        children.push(file)
+      }
+      if (piece) children.push(pieceImage(piece))
+      tile.replaceChildren(...children)
       tile.dataset.piece = piece
+      tile.dataset.coords = coordKey
     }
     const uncertain = !state.ply && state.uncertain.has(index)
-    const legalTarget = playing && state.targets.some(move => move.to === square)
+    const legalTarget = boardPreferences.legalMoves && playing && state.targets.some(move => move.to === square)
     const checked = index === checkedKing
+    const highlightMove = boardPreferences.highlights && lastMove && [lastMove.from, lastMove.to].includes(square)
     tile.classList.toggle('uncertain', uncertain)
-    tile.classList.toggle('last-move', Boolean(lastMove && [lastMove.from, lastMove.to].includes(square)))
+    tile.classList.toggle('last-move', Boolean(highlightMove))
     tile.classList.toggle('selected-square', playing && square === state.selection)
     tile.classList.toggle('legal-target', legalTarget)
     tile.classList.toggle('check-square', checked)
     const detail = [uncertain && 'needs review', legalTarget && 'legal destination', checked && 'in check'].filter(Boolean)
+    tile.dataset.square = square
     tile.setAttribute('aria-label', [square, pieceName(piece), ...detail].join(', '))
     tile.tabIndex = (state.editing || playing) && displayIndex === state.cursor ? 0 : -1
     tile.setAttribute('aria-disabled', String(!state.editing && !playing))
   }
   $('line-controls').hidden = !line.length
-  $('game-results').inert = Boolean(state.ply)
-  $('previous').disabled = state.ply === 0
-  $('next').disabled = state.ply === line.length
+  $<HTMLDetailsElement>('game-results').querySelectorAll('button').forEach(button => { button.disabled = Boolean(state.ply) })
+  $<HTMLButtonElement>('previous').disabled = state.ply === 0
+  $<HTMLButtonElement>('next').disabled = state.ply === line.length
   $('ply-label').textContent = `${state.ply} / ${line.length}`
-  $('use-preview').hidden = !activePly || state.analysis.running
+  $<HTMLButtonElement>('use-preview').hidden = !activePly || Boolean(state.analysis?.running)
   renderArrow(nextPly)
   renderPalette()
   if (pieceDrag?.active) {
@@ -453,7 +680,7 @@ function renderBoard() {
   }
 }
 
-function selectSquare(square) {
+function selectSquare(square: string): void {
   const matching = state.targets.filter(move => move.to === square)
   if (matching.length > 1) {
     choosePromotion(matching)
@@ -464,21 +691,22 @@ function selectSquare(square) {
     return
   }
 
-  const chess = state.current.chess
-  const piece = chess.get(square)
+  const chess = currentChess()
+  const piece = chess.get(square as Square)
   if (square === state.selection || piece?.color !== chess.turn()) {
     clearSelection()
   } else {
     state.selection = square
-    state.targets = chess.moves({ square, verbose: true })
+    state.targets = chess.moves({ square: square as Square, verbose: true })
   }
   renderBoard()
 }
 
-function choosePromotion(moves) {
-  const dialog = $('promotion')
+function choosePromotion(moves: Move[]): void {
+  const dialog = $<HTMLDialogElement>('promotion')
   $('promotion-pieces').replaceChildren(...moves.map(move => {
-    const piece = move.color === 'w' ? move.promotion.toUpperCase() : move.promotion
+    const promotion = move.promotion ?? 'q'
+    const piece = move.color === 'w' ? promotion.toUpperCase() : promotion
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'piece-choice'
@@ -494,7 +722,7 @@ function choosePromotion(moves) {
   dialog.showModal()
 }
 
-function navigateGame(ply) {
+function navigateGame(ply: number): void {
   const game = state.game
   if (!game || ply < 0 || ply > game.moves.length || state.scanning || state.cropping || state.pgnLoading) return
   game.ply = ply
@@ -502,27 +730,29 @@ function navigateGame(ply) {
   setPosition(fromFen(fen), game.title ? 'game' : 'play', { game, cursor: state.cursor })
 }
 
-function playMove(move) {
+function playMove(move: Move): void {
   if (!canPlay()) return
-  const game = state.game || { startFen: state.current.fen, moves: [], ply: 0 }
-  if (game.moves[game.ply]?.uci === uciMove(move)) {
+  if (boardPreferences.sounds) playChessSound(move.san)
+  const game: GameRecord = state.game || { startFen: state.current?.fen ?? DEFAULT_POSITION, moves: [], ply: 0 }
+  const at = game.ply ?? 0
+  if (game.moves[at]?.uci === uciMove(move)) {
     state.game = game
-    navigateGame(game.ply + 1)
+    navigateGame(at + 1)
   } else {
-    const chess = state.current.chess
+    const chess = currentChess()
     const recorded = recordMove(chess, chess.move(move))
-    state.game = { startFen: game.startFen, moves: [...game.moves.slice(0, game.ply), recorded], ply: game.ply }
+    state.game = { startFen: game.startFen, moves: [...game.moves.slice(0, at), recorded], ply: at }
     state.uncertain.clear()
-    navigateGame(game.ply + 1)
+    navigateGame(at + 1)
   }
   const movedPiece = move.color === 'w' ? move.piece.toUpperCase() : move.piece
-  const chess = state.current.chess
+  const chess = currentChess()
   const check = chess.isCheckmate() ? ', checkmate' : chess.isCheck() ? ', check' : ''
   $('board-announcement').textContent = `${pieceName(movedPiece)} from ${move.from} to ${move.to}${check}.`
 }
 
-function renderArrow(move) {
-  const svg = $('move-arrow')
+function renderArrow(move: { from: string; to: string } | undefined | null): void {
+  const svg = $<SVGSVGElement>('move-arrow')
   if (!move) {
     svg.replaceChildren()
     return
@@ -538,7 +768,7 @@ function renderArrow(move) {
   svg.innerHTML = `<path transform="translate(${x1} ${y1}) rotate(${angle})" d="M 0 -8 H ${length - 22} V -19 L ${length + 8} 0 L ${length - 22} 19 V 8 H 0 Q -8 8 -8 0 Q -8 -8 0 -8 Z"/>`
 }
 
-$('edit-board').addEventListener('click', () => {
+$<HTMLButtonElement>('edit-board').addEventListener('click', () => {
   state.editing = !state.editing
   if (state.editing) {
     clearAnalysis()
@@ -550,49 +780,50 @@ $('edit-board').addEventListener('click', () => {
   renderHistory(state.game, state.editing)
   updateAction()
   renderBoard()
-  if (state.editing) palette.find(({ piece }) => piece === state.palette).button.focus()
+  if (state.editing) palette.find(({ piece }) => piece === state.palette)?.button.focus()
 })
-$('flip-board').addEventListener('click', () => {
+$<HTMLButtonElement>('flip-board').addEventListener('click', () => {
   state.orientation = state.orientation === 'white' ? 'black' : 'white'
   state.cursor = 63 - state.cursor
   renderBoard()
 })
-$('rotate-import').addEventListener('click', () => {
+$<HTMLButtonElement>('rotate-import').addEventListener('click', () => {
   state.position.squares.reverse()
   state.position.castling = '-'
   state.position.ep = '-'
   state.uncertain = new Set([...state.uncertain].map(index => 63 - index))
   state.orientation = state.orientation === 'white' ? 'black' : 'white'
+  detectionView.rotate()
   afterPositionEdit()
 })
 
-for (const input of $$('[name=turn]')) {
+for (const input of $$<HTMLInputElement>('[name=turn]')) {
   input.addEventListener('change', () => {
     state.position.turn = input.value
     if (state.position.ep !== '-' && state.position.ep[1] !== (input.value === 'w' ? '6' : '3')) state.position.ep = '-'
     afterPositionEdit()
   })
 }
-for (const input of $$('.castling input')) {
+for (const input of $$<HTMLInputElement>('.castling input')) {
   input.addEventListener('change', () => {
-    state.position.castling = $$('.castling input:checked').map(box => box.value).join('') || '-'
+    state.position.castling = $$<HTMLInputElement>('.castling input:checked').map(box => box.value).join('') || '-'
     afterPositionEdit()
   })
 }
-for (const field of ['ep', 'halfmove', 'fullmove']) {
+for (const field of ['ep', 'halfmove', 'fullmove'] as const) {
   $(field).addEventListener('change', () => {
-    state.position[field] = $(field).value.trim().toLowerCase() || (field === 'ep' ? '-' : '')
+    state.position[field] = $<HTMLInputElement>(field).value.trim().toLowerCase() || (field === 'ep' ? '-' : '')
     afterPositionEdit()
   })
 }
-$('load-fen').addEventListener('click', loadFen)
-$('fen-input').addEventListener('keydown', event => {
-  if (event.key === 'Enter' && !$('load-fen').disabled) loadFen()
+$<HTMLButtonElement>('load-fen').addEventListener('click', loadFen)
+$<HTMLInputElement>('fen-input').addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !$<HTMLButtonElement>('load-fen').disabled) loadFen()
 })
 function loadFen() {
-  const { position, error } = fromFenInput($('fen-input').value)
+  const { position, error } = fromFenInput($<HTMLInputElement>('fen-input').value)
   $('fen-message').classList.toggle('error', Boolean(error))
-  if (error) {
+  if (!position) {
     showMessage($('fen-message'), error)
     return
   }
@@ -603,54 +834,55 @@ function loadFen() {
   setPosition(position, 'fen')
   showMessage($('fen-message'), 'Position loaded.')
 }
-$('copy-fen').addEventListener('click', async () => {
-  const { fen } = state.current
+$<HTMLButtonElement>('copy-fen').addEventListener('click', async () => {
+  const fen = state.current?.fen
   if (!fen) return
   $('fen-message').classList.remove('error')
   try {
     await navigator.clipboard.writeText(fen)
     showMessage($('fen-message'), 'FEN copied.')
   } catch {
-    $('fen-input').value = fen
-    $('fen-input').select()
+    $<HTMLInputElement>('fen-input').value = fen
+    $<HTMLInputElement>('fen-input').select()
     showMessage($('fen-message'), 'FEN selected. Copy it with your keyboard.')
   }
 })
 
-function resetBoard(fen, editing = false) {
+function resetBoard(fen: string, editing = false) {
   markSource(null)
   state.scanFailed = false
   state.orientation = 'white'
   state.uncertain.clear()
   setPosition(fromFen(fen), editing ? 'manual' : 'start', { editing })
-  if (editing) palette.find(({ piece }) => piece === state.palette).button.focus()
+  if (editing) palette.find(({ piece }) => piece === state.palette)?.button.focus()
 }
 
-$('setup-start').addEventListener('click', () => resetBoard(DEFAULT_POSITION))
-$('setup-empty').addEventListener('click', () => resetBoard('8/8/8/8/8/8/8/8 w - - 0 1', true))
+$<HTMLButtonElement>('setup-start').addEventListener('click', () => resetBoard(DEFAULT_POSITION))
+$<HTMLButtonElement>('setup-empty').addEventListener('click', () => resetBoard('8/8/8/8/8/8/8/8 w - - 0 1', true))
 
-$('load-pgn').addEventListener('click', () => loadPgn($('pgn-input').value))
-$('choose-pgn').addEventListener('click', () => $('pgn-file').click())
-$('pgn-file').addEventListener('change', event => {
-  const file = event.target.files[0]
+$<HTMLButtonElement>('load-pgn').addEventListener('click', () => loadPgn($<HTMLTextAreaElement>('pgn-input').value))
+$<HTMLButtonElement>('choose-pgn').addEventListener('click', () => $<HTMLInputElement>('pgn-file').click())
+$<HTMLInputElement>('pgn-file').addEventListener('change', event => {
+  const input = event.currentTarget as HTMLInputElement
+  const file = input.files?.[0]
   if (file) loadPgn(file)
-  event.target.value = ''
+  input.value = ''
 })
-$('game-select').addEventListener('change', () => openGame(Number($('game-select').value)))
-$('open-game').addEventListener('click', () => openGame(Number($('game-select').value)))
+$<HTMLSelectElement>('game-select').addEventListener('change', () => openGame(Number($<HTMLSelectElement>('game-select').value)))
+$<HTMLButtonElement>('open-game').addEventListener('click', () => openGame(Number($<HTMLSelectElement>('game-select').value)))
+$<HTMLButtonElement>('import-another').addEventListener('click', () => {
+  $('pgn-entry').hidden = false
+  $<HTMLTextAreaElement>('pgn-input').value = ''
+  $<HTMLTextAreaElement>('pgn-input').focus()
+})
 
-function loadPgn(source) {
+async function loadPgn(source: string | File) {
   if (state.pgnLoading || state.scanning || state.cropping) return
   const message = $('pgn-message')
-  message.classList.remove('error')
-  if (typeof source === 'string' && !source.trim()) {
-    message.classList.add('error')
-    showMessage(message, 'Paste a game or choose a PGN file first.')
-    return
-  }
-  if ((typeof source === 'string' ? source.length : source.size) > 5 * 1024 * 1024) {
-    message.classList.add('error')
-    showMessage(message, 'Choose a PGN smaller than 5 MB.')
+  const problem = checkPgnSource(source)
+  message.classList.toggle('error', Boolean(problem))
+  if (problem) {
+    showMessage(message, problem)
     return
   }
   state.pgnLoading = true
@@ -658,38 +890,30 @@ function loadPgn(source) {
   updateAction()
   renderBoard()
   showMessage(message, 'Loading games…')
-  let worker, timer
-  const finish = ({ games, skipped, error }) => {
-    clearTimeout(timer)
-    worker?.terminate()
+  try {
+    const { games, skipped } = await parsePgn(source, (done, total) => {
+      showMessage(message, `Reading game ${done} / ${total}…`)
+    })
     state.pgnLoading = false
-    message.classList.toggle('error', Boolean(error))
-    if (error) {
-      showMessage(message, error)
-      updateAction()
-      renderBoard()
-      return
-    }
     state.games = games
-    $('game-select').replaceChildren(...games.map((game, index) =>
+    $<HTMLSelectElement>('game-select').replaceChildren(...games.map((game, index) =>
       new Option(`${index + 1}. ${game.title}`, String(index))))
     $('game-picker').hidden = false
+    $('pgn-entry').hidden = true
     openGame(0)
     const count = games.length === 1 ? '1 game loaded.' : `${games.length} games loaded.`
     showMessage(message, skipped ? `${count} Skipped ${skipped} incomplete, illegal, or unsupported games.` : count)
-  }
-  try {
-    worker = new Worker(new URL('./pgn.worker.js', import.meta.url), { type: 'module' })
-    worker.onmessage = event => finish(event.data)
-    worker.onerror = () => finish({ error: 'Could not open the PGN reader. Try again.' })
-    timer = setTimeout(() => finish({ error: 'PGN import took too long. Try a smaller file.' }), 30_000)
-    worker.postMessage(source)
-  } catch {
-    finish({ error: 'Could not open the PGN reader. Try again.' })
+    if (!$('source-pgn').hidden) $<HTMLSelectElement>('game-select').focus()
+  } catch (error) {
+    state.pgnLoading = false
+    message.classList.add('error')
+    showMessage(message, error instanceof Error ? error.message : 'Could not open the PGN.')
+    updateAction()
+    renderBoard()
   }
 }
 
-function openGame(index) {
+function openGame(index: number) {
   if (!state.games[index]) return
   markSource(null)
   state.scanFailed = false
@@ -699,33 +923,34 @@ function openGame(index) {
   navigateGame(0)
 }
 
-function markSource(file) {
+function markSource(file: File | null) {
+  detectionView.clear()
   if (state.screenshotUrl) URL.revokeObjectURL(state.screenshotUrl)
   state.file = file
   state.screenshotUrl = file ? URL.createObjectURL(file) : null
-  $('dropzone').hidden = Boolean(file)
+  $<HTMLButtonElement>('dropzone').hidden = Boolean(file)
   $('source-preview').hidden = !file
-  if (file) {
-    $('source-thumbnail').src = state.screenshotUrl
+  if (file && state.screenshotUrl) {
+    $<HTMLImageElement>('source-thumbnail').src = state.screenshotUrl
     $('source-name').textContent = file.name || 'Pasted screenshot'
     $('source-name').title = file.name || 'Pasted screenshot'
   } else {
-    $('source-thumbnail').removeAttribute('src')
+    $<HTMLImageElement>('source-thumbnail').removeAttribute('src')
     showMessage($('scan-error'))
     showMessage($('scan-message'))
   }
 }
 
-let vision
-let scanTimer
+let vision: Worker | null = null
+let scanTimer: ReturnType<typeof setTimeout> | undefined
 
-function finishScan(error, result) {
+function finishScan(error?: string, result?: { orientation: Side; uncertain: number[]; placement: string; detection: Detection; reliable: boolean }) {
   clearTimeout(scanTimer)
   $('scan-progress').hidden = true
   state.scanning = false
   state.scanFailed = Boolean(error)
   showMessage($('scan-error'), error)
-  if (error) {
+  if (!result || !state.screenshotUrl) {
     updateAction()
     renderBoard()
     return
@@ -733,26 +958,28 @@ function finishScan(error, result) {
   state.orientation = result.orientation
   state.uncertain = new Set(result.uncertain)
   setPosition({
-    squares: fromPlacement(result.placement), turn: '', castling: '-', ep: '-', halfmove: '0', fullmove: '1',
+    squares: fromPlacement(result.placement), turn: 'w', castling: '-', ep: '-', halfmove: '0', fullmove: '1',
   }, 'screenshot')
-  $('fen-input').value = ''
+  detectionView.show(state.screenshotUrl, result.detection, result.orientation)
+  $<HTMLInputElement>('fen-input').value = ''
   showMessage($('fen-message'))
   showMessage($('scan-message'), result.reliable ?
     'Board found. Confirm who moves next.' : 'Some squares may need a closer look. Check the board before analyzing.')
 }
 
-function retireVision(message) {
+function retireVision(message: string) {
   vision?.terminate()
   vision = null
   if (state.scanning) finishScan(message)
 }
 
-function scan(crop) {
+function scan(crop?: CropRect) {
   if (state.scanning) {
     vision?.terminate()
     vision = null
   }
   clearTimeout(scanTimer)
+  detectionView.clear()
   clearAnalysis()
   clearSelection()
   showMessage($('scan-error'))
@@ -765,18 +992,18 @@ function scan(crop) {
   $('scan-progress').hidden = false
   $('scan-label').textContent = 'Opening screenshot'
   $('scan-step').textContent = '1 / 3'
-  $('scan-meter').value = 1
+  $<HTMLProgressElement>('scan-meter').value = 1
   updateAction()
   renderBoard()
   if (!vision) {
     try {
-      vision = new Worker(new URL('./vision.worker.js', import.meta.url), { type: 'module' })
+      vision = new Worker(new URL('position-vision.js', runtime), { type: 'module' })
       vision.onmessage = ({ data }) => {
         if (data.id !== state.scanId) return
         if (data.label) {
           $('scan-label').textContent = data.label
           $('scan-step').textContent = `${data.value} / 3`
-          $('scan-meter').value = data.value
+          $<HTMLProgressElement>('scan-meter').value = data.value
         } else {
           finishScan(data.error, data.result)
         }
@@ -793,7 +1020,7 @@ function scan(crop) {
   scanTimer = setTimeout(() => retireVision('Scanning took too long. Try cropping the screenshot or load a FEN.'), 45_000)
 }
 
-function acceptScreenshot(file) {
+function acceptScreenshot(file?: File | null) {
   if (!file || state.pgnLoading) return
   selectSource('tab-screenshot')
   if (!/^image\/(png|jpeg|webp|bmp|gif|x-ms-bmp)$/.test(file.type) &&
@@ -809,9 +1036,9 @@ function acceptScreenshot(file) {
   scan()
 }
 
-$('dropzone').addEventListener('click', () => $('file-input').click())
-$('replace-button').addEventListener('click', () => $('file-input').click())
-$('remove-button').addEventListener('click', () => {
+$<HTMLButtonElement>('dropzone').addEventListener('click', () => $<HTMLInputElement>('file-input').click())
+$<HTMLButtonElement>('replace-button').addEventListener('click', () => $<HTMLInputElement>('file-input').click())
+$<HTMLButtonElement>('remove-button').addEventListener('click', () => {
   retireVision('Scan canceled.')
   markSource(null)
   state.scanFailed = false
@@ -822,28 +1049,29 @@ $('remove-button').addEventListener('click', () => {
   } else {
     updateAction()
   }
-  $('dropzone').focus()
+  $<HTMLButtonElement>('dropzone').focus()
 })
-$('file-input').addEventListener('change', event => {
-  acceptScreenshot(event.target.files[0])
-  event.target.value = ''
+$<HTMLInputElement>('file-input').addEventListener('change', event => {
+  const input = event.currentTarget as HTMLInputElement
+  acceptScreenshot(input.files?.[0])
+  input.value = ''
 })
-const upload = document.querySelector('.upload-panel')
-for (const eventName of ['dragenter', 'dragover']) {
+const upload = $$('.upload-panel')[0]
+for (const eventName of ['dragenter', 'dragover'] as const) {
   upload.addEventListener(eventName, event => {
-    if (!event.dataTransfer.types.includes('Files')) return
+    if (!event.dataTransfer?.types.includes('Files')) return
     event.preventDefault()
     upload.classList.add('dragging')
   })
 }
 upload.addEventListener('dragleave', event => {
-  if (!upload.contains(event.relatedTarget)) upload.classList.remove('dragging')
+  if (!upload.contains(event.relatedTarget instanceof Node ? event.relatedTarget : null)) upload.classList.remove('dragging')
 })
 window.addEventListener('dragover', event => {
-  if (event.dataTransfer.types.includes('Files')) event.preventDefault()
+  if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
 })
 window.addEventListener('drop', event => {
-  if (!event.dataTransfer.files.length) return
+  if (!event.dataTransfer?.files.length) return
   event.preventDefault()
   upload.classList.remove('dragging')
   const [file] = event.dataTransfer.files
@@ -855,28 +1083,28 @@ window.addEventListener('drop', event => {
   }
 })
 window.addEventListener('paste', event => {
-  const item = [...event.clipboardData.items].find(item => item.kind === 'file' && item.type.startsWith('image/'))
+  const item = [...(event.clipboardData?.items ?? [])].find(item => item.kind === 'file' && item.type.startsWith('image/'))
   if (!item) return
   event.preventDefault()
   acceptScreenshot(item.getAsFile())
 })
 
-$('crop-button').addEventListener('click', () => {
+$<HTMLButtonElement>('crop-button').addEventListener('click', () => {
   clearAnalysis()
   state.cropping = true
   state.editing = false
   renderBoard()
-  cropEditor.open(state.screenshotUrl)
+  if (state.screenshotUrl) cropEditor.open(state.screenshotUrl)
   updateAction()
-  $('cancel-crop').focus()
+  $<HTMLButtonElement>('cancel-crop').focus()
 })
-$('cancel-crop').addEventListener('click', () => {
+$<HTMLButtonElement>('cancel-crop').addEventListener('click', () => {
   state.cropping = false
   updateAction()
   renderBoard()
-  $('crop-button').focus()
+  $<HTMLButtonElement>('crop-button').focus()
 })
-$('scan-crop').addEventListener('click', () => {
+$<HTMLButtonElement>('scan-crop').addEventListener('click', () => {
   if (cropEditor.selection) scan(cropEditor.selection)
 })
 
@@ -887,20 +1115,19 @@ function renderGameResults() {
   const key = chess && positionKey(chess.fen())
   const imported = key && state.games.length ? gameResults(state.games, key) : []
   const rows = imported.length ? imported : key && state.opening?.positions[key] || []
-  const table = $('game-results')
+  const table = $<HTMLDetailsElement>('game-results')
   state.gameStats = !state.editing && rows.length > 0
   table.hidden = !state.gameStats
-  $('results').hidden = !state.gameStats && !state.analysis
-  if (!state.gameStats) return
+  if (!state.gameStats || !chess) return
 
   const legal = new Map(chess.moves({ verbose: true }).map(move => [uciMove(move), move]))
-  const total = ([, white, draw, black]) => white + draw + black
+  const total = ([, white, draw, black]: OpeningRow) => white + draw + black
   $('game-results-source').textContent = imported.length ?
-    'Finished games in your imported PGN' : `Lichess sample · ${numbers.format(state.opening.games)} rated games · Oct 2025`
+    'Finished games in your imported PGN' : `Lichess sample · ${numbers.format(state.opening?.games ?? 0)} rated games · Oct 2025`
   $('game-results-body').replaceChildren(...rows.filter(([uci]) => legal.has(uci))
     .sort((a, b) => total(b) - total(a)).slice(0, 5).map(row => {
       const [uci, ...counts] = row
-      const move = legal.get(uci)
+      const move = legal.get(uci)!
       const tr = document.createElement('tr')
       const cell = tr.insertCell()
       const button = document.createElement('button')
@@ -909,6 +1136,7 @@ function renderGameResults() {
       button.textContent = move.san
       button.setAttribute('aria-label', `Play ${move.san}`)
       button.addEventListener('click', () => {
+        state.cursor = boardIndex(indexOfSquare(move.to))
         playMove(move)
         tiles[state.cursor].focus({ preventScroll: true })
       })
@@ -919,7 +1147,7 @@ function renderGameResults() {
     }))
 }
 
-function resultScore(info, turn) {
+function resultScore(info: EngineInfo, turn: 'w' | 'b') {
   if (info.score === undefined) return '—'
   const score = (turn === 'w' ? 1 : -1) * info.score
   if (info.type === 'mate') return `${score < 0 ? '−' : '+'}M${Math.abs(score)}`
@@ -929,6 +1157,7 @@ function resultScore(info, turn) {
 
 function displayResults() {
   const analysis = state.analysis
+  if (!analysis) return
   $('results').hidden = false
   $('engine-results').hidden = false
   $('next-move-prompt').hidden = true
@@ -938,10 +1167,10 @@ function displayResults() {
   $('engine-depth').textContent = analysis.depth ? `Depth ${analysis.depth}` : ''
   $('search-track').hidden = !analysis.running
   $('engine-loading').hidden = !analysis.running || analysis.stage !== 'loading'
-  $('deeper').hidden = analysis.running || !analysis.lines.length || analysis.lines[0].info.type === 'mate'
+  $<HTMLButtonElement>('deeper').hidden = analysis.running || !analysis.lines.length || analysis.lines[0].info.type === 'mate'
   $('engine-outcomes-label').hidden = !analysis.lines.some(({ info }) => info.wdl)
   showMessage($('engine-error'), analysis.error)
-  const focusedMove = document.activeElement?.dataset.move
+  const focusedMove = (document.activeElement as HTMLElement | null)?.dataset.move
   $('move-list').replaceChildren(...analysis.lines.map(({ info, line }, index) => {
     const row = document.createElement('button')
     row.type = 'button'
@@ -961,6 +1190,8 @@ function displayResults() {
     score.className = 'move-score'
     score.textContent = resultScore(info, analysis.turn)
     score.title = 'Evaluation from White’s perspective'
+    const signed = info.score === undefined ? 0 : (analysis.turn === 'w' ? 1 : -1) * info.score
+    score.dataset.side = signed > 15 ? 'white' : signed < -15 ? 'black' : 'even'
     const sequence = document.createElement('span')
     sequence.className = 'move-sequence'
     sequence.textContent = lineNotation(line.slice(0, 8))
@@ -984,10 +1215,11 @@ function displayResults() {
   renderBoard()
 }
 
-function setLines(best, alternatives = []) {
+function setLines(best: EngineInfo, alternatives: EngineInfo[] = []) {
   const analysis = state.analysis
+  if (!analysis) return
   const previous = analysis.lines[state.selected]?.info
-  analysis.lines = [best, ...alternatives].filter(Boolean).flatMap(info => {
+  analysis.lines = [best, ...alternatives].flatMap(info => {
     const line = replayLine(analysis.fen, info.pv)
     return line.length ? [{ info, line }] : []
   })
@@ -998,22 +1230,22 @@ function setLines(best, alternatives = []) {
 }
 
 function analyze(deep = false) {
-  const { fen, chess, error } = state.current
+  const { fen, chess, error } = state.current ?? {}
   showMessage($('position-error'), error)
-  if (error) return
+  if (!fen || !chess) return
   clearSelection()
   const moves = chess.moves({ verbose: true })
   const game = state.game
   const played = game?.moves.slice(0, game.ply)
-  const history = played?.length ? { startFen: game.startFen, moves: played.map(move => move.uci) } : null
+  const history = game && played?.length ? { startFen: game.startFen, moves: played.map(move => move.uci) } : undefined
   const key = positionKey(chess.fen())
-  const repeated = played?.filter(move => move.before === key).length >= 4
+  const repeated = (played?.filter(move => move.before === key).length ?? 0) >= 4
   const terminal = chess.isCheckmate() ? 'Checkmate' : chess.isStalemate() ? 'Stalemate' :
     chess.isInsufficientMaterial() ? 'Draw by insufficient material' :
       repeated ? 'Draw by fivefold repetition' :
       Number(state.position.halfmove) >= 150 ? 'Draw by the 75-move rule' : ''
   const previous = deep && state.analysis?.fen === fen ? state.analysis : null
-  const analysis = {
+  const analysis: Analysis = {
     fen, turn: chess.turn(), status: terminal || 'Loading Stockfish', stage: 'loading',
     running: !terminal, lines: previous?.lines || [], depth: previous?.depth || 0, error: '',
   }
@@ -1055,43 +1287,47 @@ function analyze(deep = false) {
   })
 }
 
-$('analyze').addEventListener('click', () => {
+$<HTMLButtonElement>('analyze').addEventListener('click', () => {
   if (state.analysis?.running) engine.stop()
-  else analyze()
+  else {
+    analyze()
+    if (state.analysis) $('engine-status').scrollIntoView({ block: 'nearest' })
+  }
 })
-$('deeper').addEventListener('click', () => {
+$<HTMLButtonElement>('deeper').addEventListener('click', () => {
   analyze(true)
-  $('analyze').focus()
+  $<HTMLButtonElement>('analyze').focus()
 })
-$('previous').addEventListener('click', () => {
+$<HTMLButtonElement>('previous').addEventListener('click', () => {
   if (!state.ply) return
   state.ply--
   renderBoard()
 })
-$('next').addEventListener('click', () => {
+$<HTMLButtonElement>('next').addEventListener('click', () => {
   const line = state.analysis?.lines[state.selected]?.line
   if (!line || state.ply >= line.length) return
   state.ply++
   renderBoard()
 })
-$('use-preview').addEventListener('click', () => {
+$<HTMLButtonElement>('use-preview').addEventListener('click', () => {
   const line = state.analysis?.lines[state.selected]?.line
-  if (!line || !state.ply || state.analysis.running) return
+  const analysis = state.analysis
+  if (!line || !state.ply || !analysis || analysis.running) return
   const base = state.game
   const moves = [...(base?.moves.slice(0, base.ply) || []),
-    ...line.slice(0, state.ply).map(move => ({ ...move, uci: uciMove(move), before: positionKey(move.before) }))]
-  state.game = { startFen: base?.startFen || state.analysis.fen, moves, ply: moves.length }
+    ...line.slice(0, state.ply).map(move => ({ ...move, before: positionKey(move.before) }))]
+  state.game = { startFen: base?.startFen || analysis.fen, moves, ply: moves.length }
   markSource(null)
   state.uncertain.clear()
   navigateGame(moves.length)
   analyze()
-  $('analyze').focus()
+  $<HTMLButtonElement>('analyze').focus()
 })
 
 renderSetup()
 renderBoard()
 
 import('./opening-sample.json').then(({ default: opening }) => {
-  state.opening = opening
+  state.opening = opening as unknown as OpeningSample
   renderGameResults()
 }).catch(() => {})

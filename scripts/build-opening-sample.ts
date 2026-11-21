@@ -1,12 +1,12 @@
 // Read the first finished games from a Lichess standard rated PGN export on stdin.
 import { createInterface } from 'node:readline'
 import { Chess } from 'chess.js'
-import { positionKey, RESULT_INDEX, uciMove } from '../src/game.js'
+import { positionKey, RESULT_INDEX, uciMove } from '../src/game'
 
 const SAMPLE_SIZE = 25_000
 const PLIES = 8
 const MIN_GAMES = 5
-const positions = new Map()
+const positions = new Map<string, Map<string, [number, number, number]>>()
 let games = 0
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity })
 
@@ -24,16 +24,16 @@ for await (const line of input) {
   })
   for (const [key, uci] of played) {
     if (!positions.has(key)) positions.set(key, new Map())
-    const rows = positions.get(key)
+    const rows = positions.get(key)!
     if (!rows.has(uci)) rows.set(uci, [0, 0, 0])
-    rows.get(uci)[RESULT_INDEX[result]]++
+    rows.get(uci)![RESULT_INDEX[result]]++
   }
   if (++games === SAMPLE_SIZE) break
 }
 if (games !== SAMPLE_SIZE) throw new Error(`Expected ${SAMPLE_SIZE} games but read ${games}.`)
-const total = row => row[1] + row[2] + row[3]
+const total = (row: [string, number, number, number]) => row[1] + row[2] + row[3]
 const rows = [...positions].flatMap(([key, moves]) => {
-  const common = [...moves].map(([uci, counts]) => [uci, ...counts]).filter(row => total(row) >= MIN_GAMES)
+  const common = [...moves].map(([uci, counts]) => [uci, ...counts] as [string, number, number, number]).filter(row => total(row) >= MIN_GAMES)
   return common.length ? [`    ${JSON.stringify(key)}: ${JSON.stringify(common.sort((a, b) => total(b) - total(a)))}`] : []
 })
 process.stdout.write(`{\n  "games": ${games},\n  "positions": {\n${rows.join(',\n')}\n  }\n}\n`)

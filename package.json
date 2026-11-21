@@ -1,24 +1,35 @@
 {
-  "name": "quiet-square",
+  "name": "chess-engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "predev": "node scripts/prepare-assets.mjs",
-    "dev": "vite",
-    "prebuild": "node scripts/prepare-assets.mjs",
-    "build": "vite build",
-    "preview": "vite preview"
+    "prepare-assets": "tsx scripts/prepare-assets.ts",
+    "predev": "npm run prepare-assets",
+    "dev": "next dev",
+    "typecheck": "tsc --noEmit",
+    "prebuild": "npm run prepare-assets && npm run typecheck",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "5.3.0",
     "@mliebelt/pgn-parser": "1.4.19",
     "@scoriiu/fenshot": "0.1.6",
     "chess.js": "1.4.0",
+    "next": "^16.4.6",
     "onnxruntime-web": "1.27.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "stockfish": "19.0.1"
   },
   "devDependencies": {
-    "vite": "8.3.8"
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "0.28.2",
+    "simple-icons": "^16.38.0",
+    "tsx": "^4.23.15",
+    "typescript": "5.9"
   }
 }

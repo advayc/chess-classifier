@@ -138,7 +138,7 @@ export function ReviewApp() {
   const cancelRef = useRef({ cancelled: false })
 
   const [query, setQuery] = useState('')
-  const [source, setSource] = useState<ImportSource>('lichess')
+  const [source, setSource] = useState<ImportSource>('chesscom')
   const [speed, setSpeed] = useState<GameSpeed>('all')
   const [color, setColor] = useState<GameColor>('either')
   const [appliedFilter, setAppliedFilter] = useState<GameFilter>({ speed: 'all', color: 'either' })
@@ -149,6 +149,7 @@ export function ReviewApp() {
   const [listUser, setListUser] = useState('')
   const [listSource, setListSource] = useState<'pgn' | 'lichess' | 'chesscom'>('pgn')
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(true)
   const [archives, setArchives] = useState<string[]>([])
   const [parseProgress, setParseProgress] = useState('')
   const [review, setReview] = useState<GameReview | null>(null)
@@ -162,7 +163,6 @@ export function ReviewApp() {
   const [promotion, setPromotion] = useState<Move[]>([])
   const [liveLines, setLiveLines] = useState<{ fen: string; lines: EngineInfo[] } | null>(null)
   const [searchError, setSearchError] = useState<{ fen: string; message: string } | null>(null)
-  const [showSummary, setShowSummary] = useState(false)
 
   useEffect(() => {
     const runtime = `${window.location.origin}/runtime/`
@@ -209,6 +209,23 @@ export function ReviewApp() {
       color: chess.turn() === 'w' ? 'b' : 'w',
     }) : null
   const bestArrow = showArrow && bestUci ? { from: bestUci.slice(0, 2), to: bestUci.slice(2, 4) } : null
+  const currentEval = review
+    ? review.graph[Math.min(ply, review.graph.length - 1)] ?? 0.5
+    : candidates[0]
+      ? chess.turn() === 'w'
+        ? sideWinChance(candidates[0].type, candidates[0].score)
+        : 1 - sideWinChance(candidates[0].type, candidates[0].score)
+      : 0.5
+  const evalLabel = (() => {
+    const candidate = candidates[0]
+    if (!candidate) return '0.0'
+    if (candidate.type === 'mate') {
+      const signed = chess.turn() === 'w' ? candidate.score : -candidate.score
+      return `${signed >= 0 ? '+' : '-'}M${Math.abs(candidate.score)}`
+    }
+    const signed = chess.turn() === 'w' ? candidate.score : -candidate.score
+    return `${signed >= 0 ? '+' : ''}${(signed / 100).toFixed(1)}`
+  })()
 
   useEffect(() => {
     if (!needsSearch || !legalMoves.length || !game) return
@@ -251,7 +268,6 @@ export function ReviewApp() {
     setBusy(true)
     setError('')
     setReview(makeReview(record, [], [0.5]))
-    setShowSummary(false)
     setPromotion([])
     setProgress({ done: 0, total: record.moves.length })
     setPly(0)
@@ -297,6 +313,7 @@ export function ReviewApp() {
     setListNext(null)
     setArchives([])
     setOpenKey(null)
+    setShowHistory(true)
     setAppliedFilter(filter)
     try {
       const result = await resolveImport(text, {
@@ -338,7 +355,31 @@ export function ReviewApp() {
         setListSource(result.kind === 'chesscom-user' ? 'chesscom' : 'lichess')
         setArchives(result.archives ?? [])
         setListNext(result.next ?? null)
-        setListUser(text.trim())
+        const entered = text.trim()
+        const fromProfile = entered.match(/chess\.com\/(?:member|play|profile)\/([A-Za-z0-9_-]+)/i)?.[1]
+          || entered.match(/lichess\.org\/@\/([^/?#]+)/i)?.[1]
+        const username = (fromProfile || entered).replace(/^@/, '')
+        setListUser(username)
+        let next = result.next ?? null
+        const remaining = [...(result.archives ?? [])]
+        let count = result.list.length
+        while (next || remaining.length) {
+          setParseProgress(`Loading games… ${count} found`)
+          if (result.kind === 'chesscom-user') {
+            const more = await listChessComMonth(remaining[0], username, filter)
+            remaining.shift()
+            setArchives([...remaining])
+            count += more.length
+            setList(current => [...current, ...more])
+          } else {
+            const page = await listLichessGames(username, next, filter)
+            next = page.next
+            setListNext(next)
+            count += page.list.length
+            setList(current => [...current, ...page.list])
+          }
+        }
+        if (!count) setError('No games matched that username and setup.')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.')
@@ -394,6 +435,7 @@ export function ReviewApp() {
   async function openListed(item: ListedGame) {
     if (busy) return
     setOpenKey(`${item.source}-${item.id}`)
+    setShowHistory(false)
     try {
       if (listSource === 'pgn') {
         const record = importedGames.current[Number(item.id)]
@@ -405,6 +447,7 @@ export function ReviewApp() {
       await runReview(record)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not open that game.')
+      setShowHistory(true)
       setBusy(false)
     }
   }
@@ -424,6 +467,27 @@ export function ReviewApp() {
     setSelected(null)
     setTargets([])
   }
+
+  const goPlyRef = useRef(goPly)
+  goPlyRef.current = goPly
+  const plyRef = useRef(ply)
+  plyRef.current = ply
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.defaultPrevented) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+      const panel = document.getElementById('mode-panel-review')
+      if (!panel || panel.hidden) return
+      const target = event.target
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"], .mode-switch')) return
+      event.preventDefault()
+      goPlyRef.current(event.key === 'ArrowLeft' ? plyRef.current - 1 : plyRef.current + 1)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   function jumpKeyMoment(direction: 1 | -1) {
     if (!review) return
@@ -530,6 +594,8 @@ export function ReviewApp() {
             fen={currentFen}
             lastMove={lastMove}
             bestArrow={bestArrow}
+            evalPercent={currentEval}
+            evalLabel={evalLabel}
             onSquareClick={boardEnabled ? onSquareClick : undefined}
             onMove={boardEnabled ? onBoardMove : undefined}
             canDrag={square => legalMoves.some(move => move.from === square)}
@@ -548,14 +614,14 @@ export function ReviewApp() {
           <div className="board-footer review-footer">
             <div className="line-controls">
               <button type="button" className="icon-button" aria-label="First move" disabled={!review || ply <= originPly} onClick={() => goPly(originPly)}
-                dangerouslySetInnerHTML={{ __html: icon('chevron-left') }} />
+                dangerouslySetInnerHTML={{ __html: icon('chevrons-left') }} />
               <button type="button" className="icon-button" aria-label="Previous move" disabled={!review || ply <= originPly} onClick={() => goPly(ply - 1)}
                 dangerouslySetInnerHTML={{ __html: icon('chevron-left') }} />
               <span>{review ? `${ply} / ${exploring ? maxPly : review.game.moves.length}` : '—'}</span>
               <button type="button" className="icon-button" aria-label="Next move" disabled={!review || ply >= maxPly} onClick={() => goPly(ply + 1)}
                 dangerouslySetInnerHTML={{ __html: icon('chevron-right') }} />
               <button type="button" className="icon-button" aria-label="Last move" disabled={!review} onClick={() => goPly(maxPly)}
-                dangerouslySetInnerHTML={{ __html: icon('chevron-right') }} />
+                dangerouslySetInnerHTML={{ __html: icon('chevrons-right') }} />
             </div>
             <div className="line-controls">
               <button type="button" className="text-button" disabled={exploring || !summary?.keyMoments.some(moment => moment < ply)} onClick={() => jumpKeyMoment(-1)}>Prev key</button>
@@ -571,15 +637,22 @@ export function ReviewApp() {
 
         <div className="analysis-rail">
           <section className="panel">
-            <h2>Load a game</h2>
             <form className="source-form" onSubmit={onImport}>
+              <div className="review-load-heading">
+                <h2>Load a game</h2>
+                {source !== 'file' ? (
+                  <button type="submit" className="primary-button" disabled={busy || !query.trim()}>
+                    {busy && progress ? `Analyzed ${progress.done} / ${progress.total}` : busy ? parseProgress || 'Loading…' : source === 'pgn' ? 'Review PGN' : 'Load games'}
+                  </button>
+                ) : null}
+              </div>
               <ChoiceRow
                 label="Import from"
                 value={source}
                 onChange={setSource}
                 options={[
-                  { value: 'lichess', label: 'Lichess', icon: 'lichess' },
                   { value: 'chesscom', label: 'Chess.com', icon: 'chesscom', brand: 'chesscom' },
+                  { value: 'lichess', label: 'Lichess', icon: 'lichess' },
                   { value: 'pgn', label: 'PGN' },
                   { value: 'file', label: 'File' },
                 ]}
@@ -608,7 +681,13 @@ export function ReviewApp() {
                       type="text"
                       value={query}
                       onChange={event => setQuery(event.target.value)}
-                      placeholder={source === 'lichess' ? 'username or https://lichess.org/…' : 'username or https://www.chess.com/game/…'}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                          event.preventDefault()
+                          if (!busy && query.trim()) event.currentTarget.form?.requestSubmit()
+                        }
+                      }}
+                      placeholder={source === 'lichess' ? 'username or https://lichess.org/…' : 'username or https://www.chess.com/member/…'}
                       spellCheck={false}
                       autoComplete="off"
                     />
@@ -639,14 +718,11 @@ export function ReviewApp() {
                       />
                     </>
                   )}
-                  <div className="source-actions">
-                    <button type="submit" className="primary-button" disabled={busy || !query.trim()}>
-                      {busy && progress ? `Analyzed ${progress.done} / ${progress.total}` : busy ? parseProgress || 'Loading…' : source === 'pgn' ? 'Review PGN' : 'Load games'}
-                    </button>
-                    {busy && progress ? (
+                  {busy && progress ? (
+                    <div className="source-actions">
                       <button type="button" className="text-button" onClick={cancelReview}>Cancel</button>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </>
               )}
               <input
@@ -668,6 +744,79 @@ export function ReviewApp() {
             </form>
           </section>
 
+          {list.length && !showHistory ? (
+            <button type="button" className="text-button history-return" onClick={() => setShowHistory(true)}>
+              ← Game history ({list.length})
+            </button>
+          ) : null}
+          {list.length && showHistory ? (
+            <section className="panel sidebar-history" aria-label="Game history">
+              <h2>Game history <span className="history-count">({list.length})</span></h2>
+              <div className="sidebar-history-list">
+                {list.map(item => {
+                  const key = `${item.source}-${item.id}`
+                  const active = openKey === key
+                  const [whiteScore, blackScore] = scorePair(item.result)
+                  const outcome = userOutcome(item, listUser)
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={active ? 'sidebar-history-row active' : 'sidebar-history-row'}
+                      aria-disabled={busy || undefined}
+                      onClick={() => openListed(item)}
+                    >
+                      <span className="sidebar-history-meta">
+                        <span>{clockLabel(item.pgn, item.timeControl)}{item.playedAt ? ` · ${new Date(item.playedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</span>
+                        {outcome ? <span className={`sidebar-history-outcome ${outcome}`}>{outcome === 'win' ? 'Win' : outcome === 'loss' ? 'Loss' : 'Draw'}</span> : null}
+                      </span>
+                      <span className="sidebar-history-players">
+                        <span className="sidebar-history-player"><span className="history-piece white" aria-label="White" /><span className="history-name">{item.white} {item.whiteElo ? <span className="history-rating">{item.whiteElo}</span> : null}</span><span className={scoreTone(item.result, 'white')}>{whiteScore}</span></span>
+                        <span className="sidebar-history-player"><span className="history-piece black" aria-label="Black" /><span className="history-name">{item.black} {item.blackElo ? <span className="history-rating">{item.blackElo}</span> : null}</span><span className={scoreTone(item.result, 'black')}>{blackScore}</span></span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              {listNext || archives.length ? (
+                <button ref={loadMoreButton} type="button" className="text-button history-more" onClick={loadMore} disabled={busy}>Load more</button>
+              ) : null}
+            </section>
+          ) : null}
+
+
+          {summary ? (
+            <section className="panel review-scorecard">
+              <h2>Game review</h2>
+              <div className="review-player-scores">
+                <div>
+                  <span className="review-player-name">{game?.white || 'White'}</span>
+                  <strong>{summary.whiteAccuracy}%</strong>
+                  <span className="review-player-rating">Game rating {summary.whiteRating ?? '—'}</span>
+                </div>
+                <div>
+                  <span className="review-player-name">{game?.black || 'Black'}</span>
+                  <strong>{summary.blackAccuracy}%</strong>
+                  <span className="review-player-rating">Game rating {summary.blackRating ?? '—'}</span>
+                </div>
+              </div>
+              <EvalGraph graph={review.graph} plies={review.plies} currentPly={ply} onSelect={goPly} />
+              <div className="review-class-table">
+                {CLASS_ORDER.map(label => {
+                  const white = summary.counts.w[label]
+                  const black = summary.counts.b[label]
+                  return white || black ? (
+                    <div className="review-class-row" key={label}>
+                      <span><ClassIcon label={label} size={14} /> {CLASS_LABEL[label]}</span>
+                      <strong>{white}</strong>
+                      <strong>{black}</strong>
+                    </div>
+                  ) : null
+                })}
+              </div>
+            </section>
+          ) : null}
+
           {review ? (
             <section className="panel">
               <h2>Engine lines</h2>
@@ -676,6 +825,12 @@ export function ReviewApp() {
                   {candidates.map((candidate, index) => {
                     const line = replayLine(currentFen, candidate.pv)
                     const score = chess.turn() === 'w' ? candidate.score : -candidate.score
+                    const moverWin = sideWinChance(candidate.type, candidate.score)
+                    const whiteWin = chess.turn() === 'w' ? moverWin : 1 - moverWin
+                    const blackWin = 1 - whiteWin
+                    const whitePct = Math.round(whiteWin * 100)
+                    const blackPct = 100 - whitePct
+                    const winLabel = whitePct >= blackPct ? `White ${whitePct}%` : `Black ${blackPct}%`
                     return (
                       <li key={candidate.pv[0]} className="move-row">
                         <div className="move-heading">
@@ -686,6 +841,20 @@ export function ReviewApp() {
                           </span>
                         </div>
                         <span className="move-sequence" title={lineNotation(line)}>{lineNotation(line.slice(0, 8))}</span>
+                        <div className="outcome-bar" aria-label={winLabel}>
+                          {whitePct > 0 ? (
+                            <span
+                              className="outcome-segment white"
+                              style={{ width: `${whitePct}%` }}
+                            >{winLabel.startsWith('White') ? winLabel : ''}</span>
+                          ) : null}
+                          {blackPct > 0 ? (
+                            <span
+                              className="outcome-segment black"
+                              style={{ width: `${blackPct}%` }}
+                            >{winLabel.startsWith('Black') ? winLabel : ''}</span>
+                          ) : null}
+                        </div>
                       </li>
                     )
                   })}
@@ -740,145 +909,40 @@ export function ReviewApp() {
                   ))}
                 </div>
               ) : null}
-              <div className="review-moves" role="list">
-                <button type="button" className={ply === 0 ? 'history-move active' : 'history-move'} onClick={() => { if (exploring) leaveExplore(); setPly(0); setSelected(null); setTargets([]) }}>Start</button>
-                {review.plies.map(entry => (
-                  <button
-                    key={entry.ply}
-                    type="button"
-                    className={ply === entry.ply ? 'history-move active' : 'history-move'}
-                    onClick={() => { if (exploring) leaveExplore(); setPly(entry.ply); setSelected(null); setTargets([]) }}
-                    title={[
-                      CLASS_LABEL[entry.label],
-                      entry.ply === review.opening?.ply && 'Last named opening move',
-                      entry.ply === (review.opening?.ply ?? -2) + 1 && 'First move outside named theory',
-                    ].filter(Boolean).join(' · ')}
-                  >
-                    <span className="move-num">{entry.move.color === 'w' ? `${entry.move.moveNumber}.` : ''}</span>
-                    <span>{entry.move.san}</span>
-                    <ClassIcon label={entry.label} size={14} />
-                  </button>
-                ))}
+              <button type="button" className={ply === 0 ? 'review-start active' : 'review-start'} onClick={() => { if (exploring) leaveExplore(); setPly(0); setSelected(null); setTargets([]) }}>Start</button>
+              <div className="review-moves-paired" role="list">
+                {Array.from({ length: Math.ceil(review.plies.length / 2) }, (_, index) => {
+                  const moveNumber = index + 1
+                  const white = review.plies.find(entry => entry.move.moveNumber === moveNumber && entry.move.color === 'w')
+                  const black = review.plies.find(entry => entry.move.moveNumber === moveNumber && entry.move.color === 'b')
+                  const renderMove = (entry: typeof white) => entry ? (
+                    <button
+                      key={entry.ply}
+                      type="button"
+                      role="listitem"
+                      className={ply === entry.ply ? 'paired-move active' : 'paired-move'}
+                      onClick={() => { if (exploring) leaveExplore(); setPly(entry.ply); setSelected(null); setTargets([]) }}
+                      title={CLASS_LABEL[entry.label]}
+                    >
+                      <span>{entry.move.san}</span>
+                      <ClassIcon label={entry.label} size={14} />
+                    </button>
+                  ) : <span className="paired-move empty" aria-hidden="true" />
+                  return (
+                    <div className="paired-move-row" key={moveNumber}>
+                      <span className="paired-move-number">{moveNumber}.</span>
+                      {renderMove(white)}
+                      {renderMove(black)}
+                    </div>
+                  )
+                })}
               </div>
 
             </section>
           ) : null}
+
         </div>
       </div>
-
-          {summary ? (
-            <details className="panel review-summary" open={showSummary} onToggle={event => setShowSummary(event.currentTarget.open)}>
-              <summary>Game results and accuracy</summary>
-              <p className="outcome-caption">{game?.result === '*' ? 'Unfinished game' : game?.result}</p>
-              <div className="accuracy-row">
-                <div>
-                  <strong>{summary.whiteAccuracy}%</strong>
-                  <span>White</span>
-                  {summary.whiteRating !== null ? <span className="rating-est">~{summary.whiteRating}</span> : null}
-                </div>
-                <div>
-                  <strong>{summary.blackAccuracy}%</strong>
-                  <span>Black</span>
-                  {summary.blackRating !== null ? <span className="rating-est">~{summary.blackRating}</span> : null}
-                </div>
-              </div>
-              <div className="class-summary">
-                {CLASS_ORDER.map(label => {
-                  const white = summary.counts.w[label]
-                  const black = summary.counts.b[label]
-                  return white || black ? (
-                    <span key={label} className="class-chip">
-                      <ClassIcon label={label} size={14} /> {CLASS_LABEL[label]} {white} / {black}
-                    </span>
-                  ) : null
-                })}
-              </div>
-              <p className="outcome-caption">Estimated rating is from this game only and can differ from your usual rating.</p>
-              {review ? <EvalGraph graph={review.graph} plies={review.plies} currentPly={ply} onSelect={goPly} /> : null}
-            </details>
-          ) : null}
-
-      {list.length ? (
-        <section className="panel history-panel" aria-label="Game history">
-          <h2>Game history <span className="history-count">({list.length})</span></h2>
-          <div className="history-scroll">
-            <div className="history-table" role="table">
-              <div className="history-head" role="row">
-                <span>Time</span>
-                <span>Players</span>
-                <span>Result</span>
-                <span>Accuracy</span>
-                <span>Moves</span>
-                <span>Date</span>
-              </div>
-              {list.map(item => {
-                const key = `${item.source}-${item.id}`
-                const active = openKey === key
-                const plies = item.moves ?? plyCount(item.pgn)
-                const moves = plies == null ? '—' : String(Math.ceil(plies / 2))
-                const [whiteScore, blackScore] = scorePair(item.result)
-                const outcome = userOutcome(item, listUser)
-                const showAccuracy = active && review && !progress && (
-                  (item.url && review.game.site === item.url) ||
-                  (listSource === 'pgn' && review.game.white === item.white && review.game.black === item.black)
-                )
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className="history-row"
-                    role="row"
-                    aria-current={active ? 'true' : undefined}
-                    aria-disabled={busy || undefined}
-                    onClick={() => openListed(item)}
-                  >
-                    <span className="history-clock">
-                      <ClockIcon />
-                      {clockLabel(item.pgn, item.timeControl)}
-                    </span>
-                    <span className="history-players">
-                      <span className="history-player">
-                        <span className="history-pip white" aria-hidden="true" />
-                        <span className="history-name">{item.white}</span>
-                        {item.whiteElo ? <span className="history-rating">({item.whiteElo})</span> : null}
-                      </span>
-                      <span className="history-player">
-                        <span className="history-pip black" aria-hidden="true" />
-                        <span className="history-name">{item.black}</span>
-                        {item.blackElo ? <span className="history-rating">({item.blackElo})</span> : null}
-                      </span>
-                    </span>
-                    <span className="history-result">
-                      <span className="history-score">
-                        <span className={scoreTone(item.result, 'white')}>{whiteScore}</span>
-                        <span className={scoreTone(item.result, 'black')}>{blackScore}</span>
-                      </span>
-                      {outcome === 'win' ? <span className="history-badge win" aria-label="Win">+</span> : null}
-                      {outcome === 'loss' ? <span className="history-badge loss" aria-label="Loss">−</span> : null}
-                      {outcome === 'draw' ? <span className="history-badge draw" aria-label="Draw">=</span> : null}
-                    </span>
-                    <span className="history-acc">
-                      {showAccuracy && review ? (
-                        <>
-                          <span className="known">{review.summary.whiteAccuracy.toFixed(1)}</span>
-                          <span className="known">{review.summary.blackAccuracy.toFixed(1)}</span>
-                        </>
-                      ) : (
-                        <span className="history-review">{active && progress ? '…' : 'Review'}</span>
-                      )}
-                    </span>
-                    <span className="history-moves">{moves}</span>
-                    <span className="history-date">{formatPlayedAt(item.playedAt)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-          {listNext || archives.length ? (
-            <button ref={loadMoreButton} type="button" className="text-button history-more" onClick={loadMore} disabled={busy}>Load more</button>
-          ) : null}
-        </section>
-      ) : null}
 
       <footer className="site-footer">
         <span>Full-game Stockfish review in your browser.</span>

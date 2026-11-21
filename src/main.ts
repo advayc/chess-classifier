@@ -857,7 +857,7 @@ function finishScan(error?: string, result?: { orientation: Side; uncertain: num
   state.orientation = result.orientation
   state.uncertain = new Set(result.uncertain)
   setPosition({
-    squares: fromPlacement(result.placement), turn: '', castling: '-', ep: '-', halfmove: '0', fullmove: '1',
+    squares: fromPlacement(result.placement), turn: 'w', castling: '-', ep: '-', halfmove: '0', fullmove: '1',
   }, 'screenshot')
   detectionView.show(state.screenshotUrl, result.detection, result.orientation)
   $<HTMLInputElement>('fen-input').value = ''
@@ -1089,6 +1089,8 @@ function displayResults() {
     score.className = 'move-score'
     score.textContent = resultScore(info, analysis.turn)
     score.title = 'Evaluation from White’s perspective'
+    const signed = info.score === undefined ? 0 : (analysis.turn === 'w' ? 1 : -1) * info.score
+    score.dataset.side = signed > 15 ? 'white' : signed < -15 ? 'black' : 'even'
     const sequence = document.createElement('span')
     sequence.className = 'move-sequence'
     sequence.textContent = lineNotation(line.slice(0, 8))

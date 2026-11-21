@@ -1,6 +1,7 @@
 import type { OutcomeCounts } from './types'
 
 const labels = ['White wins', 'Draws', 'Black wins']
+const names = ['White', 'Draw', 'Black']
 const kinds = ['white', 'draw', 'black']
 
 export function outcomePercentages(counts: number[]): number[] | null {
@@ -28,7 +29,8 @@ export function outcomeBar(counts: OutcomeCounts | number[]): HTMLSpanElement {
     segment.className = `outcome-segment ${kinds[index]}`
     segment.style.flexBasis = `${value}%`
     segment.setAttribute('aria-hidden', 'true')
-    if (value >= 17) segment.textContent = `${value}%`
+    if (value >= 42) segment.textContent = `${names[index]} ${value}%`
+    else if (value >= 16) segment.textContent = `${value}%`
     bar.append(segment)
   }
   return bar

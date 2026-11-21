@@ -25,6 +25,8 @@ export function ChessBoard({
   orientation = 'white',
   lastMove,
   bestArrow,
+  evalPercent,
+  evalLabel,
   onSquareClick,
   onMove,
   canDrag,
@@ -35,6 +37,8 @@ export function ChessBoard({
   orientation?: 'white' | 'black'
   lastMove?: { from: string; to: string } | null
   bestArrow?: { from: string; to: string } | null
+  evalPercent?: number
+  evalLabel?: string
   onMove?: (from: string, to: string) => void
   canDrag?: (square: string) => boolean
   onSquareClick?: (square: string) => void
@@ -140,6 +144,13 @@ export function ChessBoard({
         </div>
       </details>
     <div className="board-frame review-board-frame" style={{ '--light-square': theme[1], '--dark-square': theme[2] } as CSSProperties}>
+      {evalPercent !== undefined ? (
+        <div className="eval-bar" aria-label={`Evaluation ${evalLabel ?? ''}`}>
+          <div className="eval-bar-black" style={{ height: `${(1 - evalPercent) * 100}%` }} />
+          <div className="eval-bar-white" style={{ height: `${evalPercent * 100}%` }} />
+          {evalLabel ? <span>{evalLabel}</span> : null}
+        </div>
+      ) : null}
       <div className="board-surface">
         <div
           className={`chessboard ${onMove ? 'playable' : ''}`}
@@ -199,13 +210,13 @@ export function ChessBoard({
         {arrow ? (
           <svg className="move-arrow" viewBox="0 0 800 800" aria-hidden="true">
             <defs>
-              <marker id="review-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-                <path d="M0,0 L6,3 L0,6 Z" fill="var(--arrow)" />
+              <marker id="review-arrow" markerWidth="5" markerHeight="5" refX="4.5" refY="2.5" orient="auto">
+                <path d="M0,0 L5,2.5 L0,5 Z" fill="var(--arrow)" />
               </marker>
             </defs>
             <line
               x1={arrow.x1} y1={arrow.y1} x2={arrow.x2} y2={arrow.y2}
-              stroke="var(--arrow)" strokeWidth="28" strokeLinecap="round"
+              stroke="var(--arrow)" strokeWidth="16" strokeLinecap="round"
               markerEnd="url(#review-arrow)" opacity="0.85"
             />
           </svg>

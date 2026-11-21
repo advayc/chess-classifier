@@ -37,7 +37,8 @@ export interface ImportResult {
 
 const LICHESS_GAME = /^(?:https?:\/\/)?(?:www\.)?lichess\.org\/(?:embed\/)?([a-zA-Z0-9]{8,12})(?:[/#?]|$)/i
 const CHESSCOM_GAME = /^(?:https?:\/\/)?(?:www\.)?chess\.com\/(?:game\/|analysis\/game\/)(?:(live|daily)\/)?(\d+)(?:[/#?]|$)/i
-const USERNAME = /^[A-Za-z0-9_-]{2,30}$/
+const CHESSCOM_USER = /^(?:https?:\/\/)?(?:www\.)?chess\.com\/(?:member|play|profile)\/([A-Za-z0-9_-]{2,30})\/?(?:[?#].*)?$/i
+const USERNAME = /^@?[A-Za-z0-9_-]{2,30}$/
 
 export function detectImport(raw: string): { kind: ImportKind; value: string } | { error: string } {
   const text = raw.trim()
@@ -49,12 +50,15 @@ export function detectImport(raw: string): { kind: ImportKind; value: string } |
   const chesscom = text.match(CHESSCOM_GAME)
   if (chesscom) return { kind: 'chesscom-game', value: `${chesscom[1]?.toLowerCase() || 'live'}/${chesscom[2]}` }
 
+  const chesscomUser = text.match(CHESSCOM_USER)
+  if (chesscomUser) return { kind: 'chesscom-user', value: chesscomUser[1] }
+
   if (/^https?:\/\//i.test(text)) {
     return { error: 'Use a Lichess or Chess.com game URL, a username, or paste PGN.' }
   }
 
   if (USERNAME.test(text) && !text.includes('[') && !/\d\./.test(text)) {
-    return { kind: 'lichess-user', value: text }
+    return { kind: 'lichess-user', value: text.replace(/^@/, '') }
   }
 
   return { kind: 'pgn', value: text }
@@ -261,8 +265,8 @@ export async function resolveImport(
     if (detected.kind === 'chesscom-game') {
       return { kind: 'chesscom-game', games: [await fetchChessComGame(detected.value)] }
     }
-    if (detected.kind === 'lichess-user') {
-      const site = options.site || 'lichess'
+    if (detected.kind === 'lichess-user' || detected.kind === 'chesscom-user') {
+      const site = detected.kind === 'chesscom-user' ? 'chesscom' : options.site || 'lichess'
       if (site === 'chesscom') {
         const archives = await listChessComArchives(detected.value)
         if (!archives.length) return { kind: 'chesscom-user', list: [], next: null }
@@ -280,9 +284,10 @@ export async function resolveImport(
   } catch (error) {
     return {
       kind: detected.kind,
-      error: detected.kind === 'pgn'
-        ? error instanceof Error ? error.message : 'Could not read the PGN.'
-        : `${detected.kind === 'chesscom-game' || options.site === 'chesscom' && detected.kind === 'lichess-user' ? 'Chess.com' : 'Lichess'} could not provide that game or archive. Paste the PGN instead.`,
+      error: error instanceof Error && error.message !== 'Failed to fetch'
+        ? error.message
+        : detected.kind === 'pgn' ? 'Could not read the PGN.'
+        : 'Could not reach the game provider. Check your connection or paste the PGN instead.',
     }
   }
   return { kind: detected.kind, error: 'Could not import that game.' }

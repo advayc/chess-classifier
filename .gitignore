@@ -6,3 +6,4 @@ public/runtime/
 next-env.d.ts
 *.tsbuildinfo
 .vercel
+.env*

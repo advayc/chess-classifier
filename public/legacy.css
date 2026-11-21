@@ -726,8 +726,40 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 
 html.embed .page-heading,
 html.embed .skip-link { display: none; }
-html.embed body { background: transparent; }
-html.embed .page { max-width: none; margin: 0; padding: 0 0 1.25rem; }
+html.embed,
+html.embed body {
+  background: transparent;
+  overflow: hidden;
+}
+html.embed .page { max-width: none; margin: 0; padding: 0 0 .75rem; }
+/* Same packed board + rail layout as Review. */
+html.embed .workspace {
+  grid-template-columns: minmax(0, 36rem) 22rem;
+  gap: 1rem;
+  align-items: start;
+  justify-content: start;
+}
+html.embed .board-panel {
+  align-self: start;
+  width: 100%;
+  max-width: none;
+}
+html.embed .analysis-rail { width: 100%; }
+html.embed .board-heading-row {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .55rem;
+  min-height: 3.1rem;
+  align-items: flex-start;
+}
+html.embed .board-heading-row > div:first-child { min-height: 2.4rem; }
+html.embed .board-heading-row h2 { letter-spacing: -.015em; }
+html.embed .chessboard { border-radius: 4px; overflow: hidden; }
+html.embed .board-settings { margin-left: calc(1.75rem + .5rem); }
+@media (max-width: 52rem) {
+  html.embed .workspace { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  html.embed .board-panel { max-width: none; }
+  html.embed .board-settings { margin-left: 0; }
+}
 
 .board-settings-wrap { position: relative; }
 .board-settings { position: relative; display: flex; justify-content: flex-end; margin-bottom: .5rem; }
@@ -759,10 +791,24 @@ html.embed .page { max-width: none; margin: 0; padding: 0 0 1.25rem; }
 
 .board-frame {
   --coordinate-size: 0rem;
-  grid-template-columns: minmax(0, 1fr);
+  /* Match Review: eval column + board, so the two modes share the same silhouette. */
+  grid-template-columns: 1.75rem minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  column-gap: .5rem;
 }
-.board-frame .board-surface { isolation: isolate; grid-column: 1; }
+/* Inactive eval chrome: same silhouette as Review’s live bar. */
+.board-frame::before {
+  content: '';
+  grid-column: 1;
+  grid-row: 1;
+  align-self: stretch;
+  width: 1.75rem;
+  border-radius: 3px;
+  background: linear-gradient(#171717 50%, #f4f1ea 50%);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+}
+.board-frame .board-surface { isolation: isolate; grid-column: 2; }
 .board-frame .square.light { --square-tint: var(--light-square); }
 .board-frame .square.dark { --square-tint: var(--dark-square); }
 .wood-board .chessboard { background: #bc976a url('/board/smoked-maple.webp') center / cover; }

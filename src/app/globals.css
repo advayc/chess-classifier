@@ -59,6 +59,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
+html { scrollbar-gutter: stable; }
 body { margin: 0; min-width: 18rem; min-height: 100vh; }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; cursor: pointer; }
@@ -709,8 +710,8 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
 
-/* Game review */
-.app-shell { min-height: 100vh; }
+/* Game review — shell sized to board + gap + rail (no leftover void). */
+.app-shell { min-height: 100vh; max-width: calc(36rem + 1rem + 22rem + 3rem); }
 .brand-row { display: flex; align-items: center; flex-wrap: wrap; gap: .7rem 1rem; }
 .mode-switch {
   position: relative;
@@ -808,16 +809,43 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   flex-direction: column;
 }
 .review-page .workspace { flex: 1; }
-.page:has(#mode-panel-review:not([hidden])) { max-width: 76rem; }
-.review-workspace { grid-template-columns: minmax(18rem, 1fr) minmax(25rem, 31rem); }
+/* Shared board + rail: fixed tracks so board fills its column (no dead gap). */
+.app-shell .workspace,
+.review-workspace {
+  grid-template-columns: minmax(0, 36rem) 22rem;
+  gap: 1rem;
+  align-items: start;
+  justify-content: start;
+}
+.app-shell .board-panel,
 .review-workspace .board-panel {
   align-self: start;
   width: 100%;
-  max-width: 52rem;
+  max-width: none;
+}
+.app-shell .analysis-rail,
+.review-workspace > :last-child {
+  width: 100%;
 }
 .review-workspace .chessboard { border-radius: 4px; overflow: hidden; }
+.app-shell .board-heading-row h2,
 .review-workspace .board-heading-row h2 { letter-spacing: -.015em; }
-.review-workspace .board-heading-row { border-bottom: 1px solid var(--border); padding-bottom: .65rem; }
+.app-shell .board-heading-row,
+.review-workspace .board-heading-row {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: .55rem;
+  min-height: 3.1rem;
+  align-items: flex-start;
+}
+.app-shell .board-heading-row > div:first-child,
+.review-workspace .board-heading-row > div:first-child {
+  min-height: 2.4rem;
+}
+/* Sit settings over the board surface, not the eval gutter. */
+.app-shell .board-settings,
+.review-workspace .board-settings {
+  margin-left: calc(1.75rem + .5rem);
+}
 .review-page .source-form { display: grid; gap: .55rem; }
 .review-page .source-form label { margin: 0; }
 .review-page .source-actions { margin: 0; }
@@ -1134,9 +1162,12 @@ button.paired-move:focus-visible { outline-offset: -2px; }
 .mark-brilliant, .mark-great { fill: #1baca6; }
 
 @media (max-width: 52rem) {
-  .review-workspace { grid-template-columns: minmax(0, 1fr); }
+  .app-shell .workspace,
+  .review-workspace { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .app-shell .board-panel,
   .review-workspace .board-panel { max-width: none; }
-
+  .app-shell .board-settings,
+  .review-workspace .board-settings { margin-left: 0; }
 }
 
 .review-loading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: var(--secondary); font-size: .85rem; }

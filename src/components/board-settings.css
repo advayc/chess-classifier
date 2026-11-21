@@ -11,12 +11,9 @@
 .theme-choice { min-width: 0; padding: .3rem; border: 2px solid transparent; border-radius: .3rem; background: transparent; color: #eee; font-size: .72rem; cursor: pointer; }
 .theme-choice[aria-pressed="true"] { border-color: #a9c87a; background: #3b4033; }
 .theme-choice:focus-visible { outline: 2px solid white; }
-.theme-preview { display: grid; grid-template-columns: repeat(2, 1fr); aspect-ratio: 1; margin-bottom: .3rem; background-color: var(--preview-light); background-image: conic-gradient(var(--preview-dark) 25%, transparent 0 50%, var(--preview-dark) 0 75%, transparent 0); background-size: 50% 50%; }
+.theme-preview { display: grid; grid-template-columns: repeat(2, 1fr); aspect-ratio: 1; margin-bottom: .3rem; border-radius: 2px; background: #3a3935 center / 400% 400% no-repeat; background-position: 0 0; }
 .theme-preview img { width: 100%; height: 100%; object-fit: contain; }
-.theme-preview.wood-preview {
-  background-image: conic-gradient(color-mix(in srgb, var(--preview-dark) 82%, transparent) 25%, transparent 0 50%, color-mix(in srgb, var(--preview-dark) 82%, transparent) 0 75%, transparent 0), linear-gradient(#f5debd60, #f5debd60), url('/board/smoked-maple.webp');
-  background-size: 50% 50%, cover, cover;
-}
+.theme-choice > span:last-child { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-options { border-top: 1px solid #55534c; margin-top: 1rem; padding-top: .4rem; }
 .board-options label { display: flex; justify-content: space-between; align-items: center; padding: .45rem 0; font-size: .85rem; cursor: pointer; }
 .board-options input { accent-color: #86a85c; width: 1.1rem; height: 1.1rem; }
@@ -27,18 +24,16 @@
 .board-frame .board-surface { isolation: isolate; }
 .board-frame .square.light { --square-tint: var(--light-square); }
 .board-frame .square.dark { --square-tint: var(--dark-square); }
-.wood-board .chessboard { background: #bc976a url('/board/smoked-maple.webp') center / cover; }
-.board-frame.wood-board .square.light { --square-tint: color-mix(in srgb, var(--light-square) 55%, transparent); }
-.board-frame.wood-board .square.dark { --square-tint: color-mix(in srgb, var(--dark-square) 70%, transparent); }
-.board-frame.wood-board .square { background: var(--square-tint); }
-.board-frame.wood-board .square.last-move { --move-tint: #ffcf4260; }
-.board-frame .square.last-move.classified-move { --move-tint: color-mix(in srgb, var(--classification-color) 44%, transparent); }
-.board-frame .square.last-move.classified-move,
-.board-frame.wood-board .square.last-move {
+/* Chess.com board images: the picture draws the squares; highlights sit on top. */
+.board-frame.image-board .chessboard { background: var(--dark-square) var(--board-image) center / 100% 100% no-repeat; }
+.board-frame.image-board .square,
+.board-frame.image-board .square.light,
+.board-frame.image-board .square.dark { background: transparent; }
+.board-frame.image-board .square.last-move { --move-tint: rgb(255 255 51 / .45); background: var(--move-tint); }
+.board-frame .square.last-move.classified-move { --move-tint: color-mix(in srgb, var(--classification-color) 50%, transparent); }
+.board-frame:not(.image-board) .square.last-move.classified-move {
   background: linear-gradient(var(--move-tint), var(--move-tint)), var(--square-tint);
 }
-.wood-board .light .board-coordinate { color: #55391f; }
-.wood-board .dark .board-coordinate { color: #fff1d8; }
 
 .board-frame .square img { position: relative; z-index: 2; width: 82%; height: 82%; }
 .board-frame .board-coordinate { z-index: 3; }

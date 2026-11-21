@@ -1,27 +1,17 @@
+import themes from './board-themes.json'
+
 export const BOARD_PREFERENCES_KEY = 'chess-board-preferences'
 
-export const THEMES = [
-  ['Green', '#ebecd0', '#739552'],
-  ['Brown', '#f0d9b5', '#b58863'],
-  ['Blue', '#dee3e6', '#8ca2ad'],
-  ['Blue Marble', '#cbd8e3', '#5682a3'],
-  ['Wood', '#f0dbb8', '#604025'],
-  ['Walnut', '#e9cda5', '#76513c'],
-  ['Maple', '#f2d7ad', '#c18c57'],
-  ['Olive', '#e8e2c3', '#888b55'],
-  ['Gray', '#e5e5e5', '#929292'],
-  ['Slate', '#d7d9d4', '#708078'],
-  ['Purple', '#e8dded', '#9577a5'],
-  ['Ocean', '#d5e8e5', '#5b9493'],
-  ['Sand', '#f2e4c8', '#c3a377'],
-  ['Coral', '#f6ded4', '#c78070'],
-] as const
+export type BoardTheme = { id: string; name: string; light: string; dark: string }
+export type PieceSet = { id: string; name: string }
 
-export type ThemeName = (typeof THEMES)[number][0]
-export const WOOD_THEMES = new Set<string>(['Wood', 'Walnut', 'Maple'])
+/** Chess.com boards and piece sets, imported by scripts/import-board-themes.ts. */
+export const BOARDS: BoardTheme[] = themes.boards
+export const PIECE_SETS: PieceSet[] = themes.pieces
 
 export type BoardPreferences = {
   theme: string
+  pieces: string
   coordinates: boolean
   highlights: boolean
   legalMoves: boolean
@@ -29,26 +19,42 @@ export type BoardPreferences = {
 }
 
 export const DEFAULT_BOARD_PREFERENCES: BoardPreferences = {
-  theme: 'Green',
+  theme: '9rdwe',
+  pieces: 'ejgfv',
   coordinates: true,
   highlights: true,
   legalMoves: true,
   sounds: true,
 }
 
-export function themeColors(name: string): readonly [string, string, string] {
-  return THEMES.find(theme => theme[0] === name) ?? THEMES[0]
+// Earlier versions stored colour-pair names; map them to the closest Chess.com board.
+const LEGACY_THEMES: Record<string, string> = {
+  Green: '9rdwe', Brown: 'brown', Blue: '4fs27', 'Blue Marble': 'marble', Wood: 'dark_wood',
+  Walnut: 'walnut', Maple: 'tan', Olive: 'parchment', Gray: 'light', Slate: 'stone',
+  Purple: 'purple', Ocean: 'icy_sea', Sand: 'sand', Coral: 'red',
+}
+
+export function boardTheme(id: string): BoardTheme {
+  return BOARDS.find(board => board.id === id) ?? BOARDS[0]
+}
+
+export function boardImage(id: string, thumbnail = false): string {
+  return `/themes/boards/${id}${thumbnail ? '-thumb' : ''}.webp`
+}
+
+/** Image for a FEN piece letter (uppercase is White) in the chosen set. */
+export function pieceSource(piece: string, set: string): string {
+  const side = piece === piece.toUpperCase() ? 'w' : 'b'
+  return `/themes/pieces/${set}/${side}${piece.toLowerCase()}.webp`
 }
 
 export function loadBoardPreferences(): BoardPreferences {
   try {
-    const saved = JSON.parse(localStorage.getItem(BOARD_PREFERENCES_KEY) || '{}') as Partial<BoardPreferences> & { version?: number }
-    // Version 2 briefly forced Wood as the default; restore Green for that cohort.
-    const theme = saved.theme === 'Wood' && saved.version === 2
-      ? DEFAULT_BOARD_PREFERENCES.theme
-      : saved.theme
+    const saved = JSON.parse(localStorage.getItem(BOARD_PREFERENCES_KEY) || '{}') as Partial<BoardPreferences>
+    const theme = saved.theme && LEGACY_THEMES[saved.theme] || saved.theme
     return {
-      theme: THEMES.some(entry => entry[0] === theme) ? theme! : DEFAULT_BOARD_PREFERENCES.theme,
+      theme: BOARDS.some(board => board.id === theme) ? theme! : DEFAULT_BOARD_PREFERENCES.theme,
+      pieces: PIECE_SETS.some(set => set.id === saved.pieces) ? saved.pieces! : DEFAULT_BOARD_PREFERENCES.pieces,
       coordinates: typeof saved.coordinates === 'boolean' ? saved.coordinates : DEFAULT_BOARD_PREFERENCES.coordinates,
       highlights: typeof saved.highlights === 'boolean' ? saved.highlights : DEFAULT_BOARD_PREFERENCES.highlights,
       legalMoves: typeof saved.legalMoves === 'boolean' ? saved.legalMoves : DEFAULT_BOARD_PREFERENCES.legalMoves,
@@ -65,10 +71,18 @@ export function saveBoardPreferences(preferences: BoardPreferences): void {
   } catch { /* ignore quota / private mode */ }
 }
 
+/** CSS custom properties that paint a board frame with the chosen board image. */
+export function boardStyle(id: string): Record<string, string> {
+  const board = boardTheme(id)
+  return {
+    '--light-square': board.light,
+    '--dark-square': board.dark,
+    '--board-image': `url('${boardImage(board.id)}')`,
+  }
+}
+
 export function applyBoardTheme(frame: HTMLElement, preferences: BoardPreferences): void {
-  const [, light, dark] = themeColors(preferences.theme)
-  frame.style.setProperty('--light-square', light)
-  frame.style.setProperty('--dark-square', dark)
-  frame.classList.toggle('wood-board', WOOD_THEMES.has(preferences.theme))
+  for (const [key, value] of Object.entries(boardStyle(preferences.theme))) frame.style.setProperty(key, value)
+  frame.classList.add('image-board')
   frame.classList.toggle('hide-coordinates', !preferences.coordinates)
 }

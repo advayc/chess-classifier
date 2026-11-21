@@ -1,10 +1,12 @@
 import { DEFAULT_POSITION, type Chess, type Square } from 'chess.js'
 import {
   BOARD_PREFERENCES_KEY,
-  THEMES,
-  WOOD_THEMES,
+  BOARDS,
+  PIECE_SETS,
   applyBoardTheme,
+  boardImage,
   loadBoardPreferences,
+  pieceSource,
   saveBoardPreferences,
   type BoardPreferences,
 } from './board-preferences'
@@ -133,34 +135,39 @@ renderThemeToggle()
 let boardPreferences: BoardPreferences = loadBoardPreferences()
 const boardFrame = $('board-frame')
 const themeGrid = $('theme-grid')
+const pieceGrid = $('piece-grid')
 const prefCoordinates = $<HTMLInputElement>('pref-coordinates')
 const prefHighlights = $<HTMLInputElement>('pref-highlights')
 const prefLegalMoves = $<HTMLInputElement>('pref-legal-moves')
 const prefSounds = $<HTMLInputElement>('pref-sounds')
 
+function themeChoice(name: string, selected: boolean, board: string, pieces: string, choose: () => void): HTMLButtonElement {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'theme-choice'
+  button.setAttribute('aria-pressed', String(selected))
+  const preview = document.createElement('span')
+  preview.className = 'theme-preview'
+  preview.style.backgroundImage = `url('${boardImage(board, true)}')`
+  preview.setAttribute('aria-hidden', 'true')
+  for (const piece of ['N', 'k']) {
+    const image = pieceImage(piece, pieces)
+    image.loading = 'lazy'
+    preview.append(image)
+  }
+  const label = document.createElement('span')
+  label.textContent = name
+  button.append(preview, label)
+  button.addEventListener('click', choose)
+  return button
+}
+
 function renderBoardSettings(): void {
-  themeGrid.replaceChildren(...THEMES.map(([name, light, dark]) => {
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'theme-choice'
-    button.setAttribute('aria-pressed', String(boardPreferences.theme === name))
-    const preview = document.createElement('span')
-    preview.className = `theme-preview${WOOD_THEMES.has(name) ? ' wood-preview' : ''}`
-    preview.style.setProperty('--preview-light', light)
-    preview.style.setProperty('--preview-dark', dark)
-    preview.setAttribute('aria-hidden', 'true')
-    preview.append(pieceImage('N'), pieceImage('k'))
-    const label = document.createElement('span')
-    label.textContent = name
-    button.append(preview, label)
-    button.addEventListener('click', () => {
-      boardPreferences = { ...boardPreferences, theme: name }
-      saveBoardPreferences(boardPreferences)
-      applyBoardTheme(boardFrame, boardPreferences)
-      renderBoardSettings()
-    })
-    return button
-  }))
+  const { theme, pieces } = boardPreferences
+  themeGrid.replaceChildren(...BOARDS.map(board =>
+    themeChoice(board.name, theme === board.id, board.id, pieces, () => setBoardPreference('theme', board.id))))
+  pieceGrid.replaceChildren(...PIECE_SETS.map(set =>
+    themeChoice(set.name, pieces === set.id, theme, set.id, () => setBoardPreference('pieces', set.id))))
   prefCoordinates.checked = boardPreferences.coordinates
   prefHighlights.checked = boardPreferences.highlights
   prefLegalMoves.checked = boardPreferences.legalMoves
@@ -204,10 +211,9 @@ window.addEventListener('storage', event => {
   renderBoard()
 })
 
-function pieceImage(piece: string): HTMLImageElement {
+function pieceImage(piece: string, set = boardPreferences.pieces): HTMLImageElement {
   const image = document.createElement('img')
-  const side = piece === piece.toUpperCase() ? 'w' : 'b'
-  image.src = `/pieces/${side}${piece.toUpperCase()}.svg`
+  image.src = pieceSource(piece, set)
   image.alt = ''
   image.draggable = false
   return image

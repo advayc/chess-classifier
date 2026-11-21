@@ -5,12 +5,14 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent, type CSSProper
 import './board-settings.css'
 import {
   BOARD_PREFERENCES_KEY,
+  BOARDS,
   DEFAULT_BOARD_PREFERENCES,
-  THEMES,
-  WOOD_THEMES,
+  PIECE_SETS,
+  boardImage,
+  boardStyle,
   loadBoardPreferences,
+  pieceSource,
   saveBoardPreferences,
-  themeColors,
   type BoardPreferences,
 } from '../board-preferences'
 import { playChessSound, prepareChessAudio } from '../chess-sound'
@@ -90,8 +92,7 @@ export function ChessBoard({
     playChessSound(reviewPly >= previous.ply ? lastSan : undefined)
   }, [fen, lastSan, loaded, preferences.sounds, reviewGame, reviewPly])
 
-  const theme = themeColors(preferences.theme)
-  const wood = WOOD_THEMES.has(theme[0])
+  const pieces = preferences.pieces
   const highlightedMove = preferences.highlights ? lastMove : null
   const badgeIndex = highlightedMove && moveClass ? displaySquareIndex(highlightedMove.to, orientation) : null
   const placement = fen.split(' ')[0]
@@ -132,7 +133,7 @@ export function ChessBoard({
       current.active = true
       event.currentTarget.setPointerCapture(event.pointerId)
       setDragSource(current.square)
-      ghost.current.src = pieceSource(current.piece)
+      ghost.current.src = pieceSource(current.piece, pieces)
       ghost.current.style.width = `${event.currentTarget.clientWidth / 8}px`
     }
     ghost.current.style.transform = `translate(${event.clientX}px, ${event.clientY}px) translate(-50%, -50%)`
@@ -158,12 +159,21 @@ export function ChessBoard({
         <summary><span dangerouslySetInnerHTML={{ __html: icon('gear', 15) }} /> Board settings</summary>
         <div className="board-settings-panel">
           <h3>Board settings</h3>
-          <p>Choose a board</p>
+          <p>Board</p>
           <div className="theme-grid" role="group" aria-label="Board theme">
-            {THEMES.map(([name, light, dark]) => (
-              <button type="button" key={name} className="theme-choice" aria-pressed={preferences.theme === name} onClick={() => setPreferences(p => ({ ...p, theme: name }))}>
-                <span className={`theme-preview${WOOD_THEMES.has(name) ? ' wood-preview' : ''}`} style={{ '--preview-light': light, '--preview-dark': dark } as CSSProperties} aria-hidden="true"><img src="/pieces/wN.svg" alt="" /><img src="/pieces/bK.svg" alt="" /></span>
-                <span>{name}</span>
+            {BOARDS.map(board => (
+              <button type="button" key={board.id} className="theme-choice" aria-pressed={preferences.theme === board.id} onClick={() => setPreferences(p => ({ ...p, theme: board.id }))}>
+                <span className="theme-preview" style={{ backgroundImage: `url('${boardImage(board.id, true)}')` }} aria-hidden="true"><img src={pieceSource('N', pieces)} alt="" loading="lazy" /><img src={pieceSource('k', pieces)} alt="" loading="lazy" /></span>
+                <span>{board.name}</span>
+              </button>
+            ))}
+          </div>
+          <p>Pieces</p>
+          <div className="theme-grid" role="group" aria-label="Piece set">
+            {PIECE_SETS.map(set => (
+              <button type="button" key={set.id} className="theme-choice" aria-pressed={pieces === set.id} onClick={() => setPreferences(p => ({ ...p, pieces: set.id }))}>
+                <span className="theme-preview" style={{ backgroundImage: `url('${boardImage(preferences.theme, true)}')` }} aria-hidden="true"><img src={pieceSource('N', set.id)} alt="" loading="lazy" /><img src={pieceSource('k', set.id)} alt="" loading="lazy" /></span>
+                <span>{set.name}</span>
               </button>
             ))}
           </div>
@@ -174,9 +184,8 @@ export function ChessBoard({
           </div>
         </div>
       </details>
-    <div className={`board-frame review-board-frame${wood ? ' wood-board' : ''}`} style={{
-      '--light-square': theme[1],
-      '--dark-square': theme[2],
+    <div className="board-frame review-board-frame image-board" style={{
+      ...boardStyle(preferences.theme),
       '--classification-color': moveClass ? classColor(moveClass) : undefined,
     } as CSSProperties}>
       {evalPercent !== undefined ? (
@@ -234,7 +243,7 @@ export function ChessBoard({
                 {preferences.coordinates && (square[1] === (orientation === 'white' ? '1' : '8')) ? <span className="board-coordinate file-coordinate">{square[0]}</span> : null}
                 {piece ? (
                   <img
-                    src={pieceSource(piece)}
+                    src={pieceSource(piece, pieces)}
                     alt=""
                     draggable={false}
                   />
@@ -261,10 +270,6 @@ export function ChessBoard({
     </div>
     </div>
   )
-}
-
-function pieceSource(piece: string) {
-  return `/pieces/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.svg`
 }
 
 function displaySquareIndex(square: string, orientation: 'white' | 'black') {

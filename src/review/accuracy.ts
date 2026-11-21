@@ -16,11 +16,55 @@ export function accuracyFor(moves: { dropPct: number; label: MoveClass }[]): num
   return Math.round((mean + harmonic) * 5) / 10
 }
 
-/** Rough performance rating from accuracy; not a true Elo. */
-export function estimatedRating(accuracy: number, moveCount: number): number | null {
+const RATING_ACCURACY_ANCHORS = [
+  [20, 250],
+  [30, 450],
+  [50, 700],
+  [60, 900],
+  [70, 1200],
+  [80, 1600],
+  [90, 2100],
+  [95, 2400],
+  [99.5, 2800],
+] as const
+
+function interpolateAccuracyRating(accuracy: number): number {
+  const clamped = Math.max(20, Math.min(99.5, accuracy))
+  for (let index = 1; index < RATING_ACCURACY_ANCHORS.length; index++) {
+    const [nextAccuracy, nextRating] = RATING_ACCURACY_ANCHORS[index]
+    const [previousAccuracy, previousRating] = RATING_ACCURACY_ANCHORS[index - 1]
+    if (clamped <= nextAccuracy) {
+      const fraction = (clamped - previousAccuracy) / (nextAccuracy - previousAccuracy)
+      return previousRating + fraction * (nextRating - previousRating)
+    }
+  }
+  return RATING_ACCURACY_ANCHORS[RATING_ACCURACY_ANCHORS.length - 1][1]
+}
+
+/**
+ * Estimate game performance Elo from engine accuracy.
+ *
+ * This uses a calibrated, monotonic accuracy-to-rating curve rather than a
+ * linear percentage shortcut. The confidence rises with move count. When an
+ * actual imported Elo is available, it anchors the estimate; a small sample
+ * is prevented from producing an extreme jump.
+ */
+export function estimatedRating(
+  accuracy: number,
+  moveCount: number,
+  actualRating?: number | null,
+): number | null {
   if (moveCount < 4) return null
-  const clamped = Math.min(99.5, Math.max(20, accuracy))
-  return Math.round(400 + (clamped / 100) * 2400)
+
+  const performance = interpolateAccuracyRating(accuracy)
+  if (!actualRating || !Number.isFinite(actualRating) || actualRating < 100) {
+    const sampleConfidence = Math.min(0.35, moveCount / 80)
+    return Math.round(performance * (0.65 + sampleConfidence) + 1200 * (0.35 - sampleConfidence))
+  }
+
+  const anchoringWeight = Math.min(0.55, 0.25 + moveCount / 200)
+  const rating = actualRating * anchoringWeight + performance * (1 - anchoringWeight)
+  return Math.round(rating)
 }
 
 export function splitByColor(

@@ -861,7 +861,7 @@ export function ReviewApp() {
                 <div className="review-stats-row"><span>Accuracy</span><strong className="stat-white">{summary.whiteAccuracy.toFixed(1)}%</strong><strong className="stat-black">{summary.blackAccuracy.toFixed(1)}%</strong></div>
                 <div className="review-stats-row"><span>Estimated rating</span><strong className="stat-white">{summary.whiteRating ?? '—'}</strong><strong className="stat-black">{summary.blackRating ?? '—'}</strong></div>
               </div>
-              <p className="rating-note">Accuracy is an engine-based estimate. Rating is a rough estimate, not an official Elo.{busy && progress ? ' Values update during analysis.' : ''}</p>
+              <p className="rating-note">Rating is an engine-based performance estimate anchored by move count and imported Elo when available.{busy && progress ? ' Values update during analysis.' : ''}</p>
               <EvalGraph graph={review.graph} plies={review.plies} currentPly={ply} onSelect={goPly} />
               <div className="review-class-table" role="region" aria-label="Move classifications" tabIndex={0}>
                 {CLASS_ORDER.map(label => {

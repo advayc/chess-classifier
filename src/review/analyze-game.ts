@@ -207,8 +207,8 @@ export function makeReview(game: GameRecord, plies: ReviewedPly[], graph: number
     summary: {
       whiteAccuracy: whiteAccuracy,
       blackAccuracy: blackAccuracy,
-      whiteRating: estimatedRating(whiteAccuracy, byColor.w.length),
-      blackRating: estimatedRating(blackAccuracy, byColor.b.length),
+      whiteRating: estimatedRating(whiteAccuracy, byColor.w.length, game.whiteElo),
+      blackRating: estimatedRating(blackAccuracy, byColor.b.length, game.blackElo),
       counts,
       keyMoments: swings,
     },

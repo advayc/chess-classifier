@@ -1,10 +1,24 @@
 'use client'
 
 import { Chess } from 'chess.js'
-import { useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent, type CSSProperties } from 'react'
+import './board-settings.css'
 import { FILES, indexOfSquare, pieceName } from '../position'
 
 const FILES_LIST = [...FILES]
+
+const THEMES = [
+  ['Green', '#ebecd0', '#739552'], ['Brown', '#f0d9b5', '#b58863'],
+  ['Blue', '#dee3e6', '#8ca2ad'], ['Blue Marble', '#cbd8e3', '#5682a3'],
+  ['Wood', '#e8c790', '#a66d42'], ['Walnut', '#e9cda5', '#76513c'],
+  ['Maple', '#f2d7ad', '#c18c57'], ['Olive', '#e8e2c3', '#888b55'],
+  ['Gray', '#e5e5e5', '#929292'], ['Slate', '#d7d9d4', '#708078'],
+  ['Purple', '#e8dded', '#9577a5'], ['Ocean', '#d5e8e5', '#5b9493'],
+  ['Sand', '#f2e4c8', '#c3a377'], ['Coral', '#f6ded4', '#c78070'],
+] as const
+
+type BoardPreferences = { theme: string; coordinates: boolean; highlights: boolean; legalMoves: boolean }
+const DEFAULTS: BoardPreferences = { theme: 'Green', coordinates: true, highlights: true, legalMoves: true }
 
 export function ChessBoard({
   fen,
@@ -27,6 +41,24 @@ export function ChessBoard({
   selected?: string | null
   targets?: string[]
 }) {
+  const [preferences, setPreferences] = useState<BoardPreferences>(DEFAULTS)
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('chess-board-preferences') || '{}')
+      setPreferences({
+        theme: THEMES.some(t => t[0] === saved.theme) ? saved.theme : DEFAULTS.theme,
+        coordinates: typeof saved.coordinates === 'boolean' ? saved.coordinates : true,
+        highlights: typeof saved.highlights === 'boolean' ? saved.highlights : true,
+        legalMoves: typeof saved.legalMoves === 'boolean' ? saved.legalMoves : true,
+      })
+    } catch { /* Use defaults if saved settings are invalid. */ }
+    setLoaded(true)
+  }, [])
+  useEffect(() => {
+    if (loaded) localStorage.setItem('chess-board-preferences', JSON.stringify(preferences))
+  }, [loaded, preferences])
+  const theme = THEMES.find(t => t[0] === preferences.theme) ?? THEMES[0]
   const placement = fen.split(' ')[0]
   const squares = useMemo(() => {
     const list: { square: string; piece: string; dark: boolean }[] = []
@@ -86,7 +118,28 @@ export function ChessBoard({
   }
 
   return (
-    <div className="board-frame review-board-frame">
+    <div className="board-settings-wrap">
+      <details className="board-settings">
+        <summary aria-label="Board settings" title="Board settings">⚙ <span>Board settings</span></summary>
+        <div className="board-settings-panel">
+          <h3>Board settings</h3>
+          <p>Choose a board</p>
+          <div className="theme-grid" role="group" aria-label="Board theme">
+            {THEMES.map(([name, light, dark]) => (
+              <button type="button" key={name} className="theme-choice" aria-pressed={preferences.theme === name} onClick={() => setPreferences(p => ({ ...p, theme: name }))}>
+                <span className="theme-preview" style={{ '--preview-light': light, '--preview-dark': dark } as CSSProperties} aria-hidden="true"><img src="/pieces/wN.svg" alt="" /><img src="/pieces/bK.svg" alt="" /></span>
+                <span>{name}</span>
+              </button>
+            ))}
+          </div>
+          <div className="board-options">
+            {([['coordinates', 'Show coordinates'], ['highlights', 'Highlight last move'], ['legalMoves', 'Show legal moves']] as const).map(([key, label]) => (
+              <label key={key}><span>{label}</span><input type="checkbox" checked={preferences[key]} onChange={event => setPreferences(p => ({ ...p, [key]: event.target.checked }))} /></label>
+            ))}
+          </div>
+        </div>
+      </details>
+    <div className="board-frame review-board-frame" style={{ '--light-square': theme[1], '--dark-square': theme[2] } as CSSProperties}>
       <div className="board-surface">
         <div
           className={`chessboard ${onMove ? 'playable' : ''}`}
@@ -102,8 +155,8 @@ export function ChessBoard({
         >
           {squares.map(({ square, piece, dark }) => {
             const isSelected = selected === square
-            const isTarget = targets.includes(square)
-            const isLast = lastMove && (lastMove.from === square || lastMove.to === square)
+            const isTarget = preferences.legalMoves && targets.includes(square)
+            const isLast = preferences.highlights && lastMove && (lastMove.from === square || lastMove.to === square)
             return (
               <button
                 key={square}
@@ -129,6 +182,8 @@ export function ChessBoard({
                   suppressClick.current = false
                 }}
               >
+                {preferences.coordinates && (square[0] === (orientation === 'white' ? 'a' : 'h')) ? <span className="board-coordinate rank-coordinate">{square[1]}</span> : null}
+                {preferences.coordinates && (square[1] === (orientation === 'white' ? '1' : '8')) ? <span className="board-coordinate file-coordinate">{square[0]}</span> : null}
                 {piece ? (
                   <img
                     src={pieceSource(piece)}
@@ -156,6 +211,7 @@ export function ChessBoard({
           </svg>
         ) : null}
       </div>
+    </div>
     </div>
   )
 }

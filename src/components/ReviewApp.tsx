@@ -32,7 +32,7 @@ type ImportSource = 'lichess' | 'chesscom' | 'pgn' | 'file'
 function ChoiceRow<T extends string>({ label, value, options, onChange }: {
   label: string
   value: T
-  options: { value: T; label: string; icon?: string }[]
+  options: { value: T; label: string; icon?: string; brand?: string }[]
   onChange: (value: T) => void
 }) {
   const groupId = `import-${label.toLowerCase().replace(/\s+/g, '-')}`
@@ -48,12 +48,84 @@ function ChoiceRow<T extends string>({ label, value, options, onChange }: {
             aria-pressed={value === option.value}
             onClick={() => onChange(option.value)}
           >
-            {option.icon ? <img src={option.icon} alt="" width={16} height={16} /> : null}
+            {option.icon ? (
+              <span className={option.brand ? `brand-mark ${option.brand}` : 'brand-mark'} dangerouslySetInnerHTML={{ __html: icon(option.icon, 16) }} />
+            ) : null}
             {option.label}
           </button>
         ))}
       </div>
     </div>
+  )
+}
+
+function clockLabel(pgn: string | undefined, fallback?: string): string {
+  const header = pgn?.match(/\[TimeControl "([^"]+)"\]/)?.[1]
+  if (header && header !== '-' && header !== '?') {
+    if (header.startsWith('1/')) return 'Daily'
+    const [baseRaw, incRaw] = header.split('+')
+    const base = Number(baseRaw)
+    const inc = incRaw ? Number(incRaw) : 0
+    if (Number.isFinite(base) && base > 0) {
+      if (base >= 60 && base % 60 === 0) return inc ? `${base / 60}+${inc}` : `${base / 60} min`
+      return inc ? `${base}s+${inc}` : `${base}s`
+    }
+  }
+  if (!fallback) return '—'
+  return fallback.charAt(0).toUpperCase() + fallback.slice(1)
+}
+
+function plyCount(pgn?: string): number | null {
+  if (!pgn) return null
+  const body = pgn.replace(/\[[^\]]*\]/g, ' ').replace(/\{[^}]*\}/g, ' ').replace(/;[^\n]*/g, ' ')
+  const tokens = body.replace(/\d+\.(\.\.)?/g, ' ').split(/\s+/)
+  let count = 0
+  for (const token of tokens) {
+    if (/^(?:O-O-O|O-O|0-0-0|0-0)[+#]?$/.test(token)) count++
+    else if (/^[NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBRQK])?[+#]?$/.test(token)) count++
+  }
+  return count || null
+}
+
+function formatPlayedAt(iso?: string): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+function scorePair(result: string): [string, string] {
+  if (result === '1-0') return ['1', '0']
+  if (result === '0-1') return ['0', '1']
+  if (result === '1/2-1/2') return ['½', '½']
+  return ['–', '–']
+}
+
+function userOutcome(item: ListedGame, username: string): 'win' | 'loss' | 'draw' | null {
+  const me = username.trim().toLowerCase()
+  if (!me) return null
+  const asWhite = item.white.toLowerCase() === me
+  const asBlack = item.black.toLowerCase() === me
+  if (!asWhite && !asBlack) return null
+  if (item.result === '1/2-1/2') return 'draw'
+  if (item.result === '1-0') return asWhite ? 'win' : 'loss'
+  if (item.result === '0-1') return asBlack ? 'win' : 'loss'
+  return null
+}
+
+function scoreTone(result: string, side: 'white' | 'black'): string {
+  if (result === '1/2-1/2') return 'score-draw'
+  if (result === '1-0') return side === 'white' ? 'score-win' : 'score-loss'
+  if (result === '0-1') return side === 'black' ? 'score-win' : 'score-loss'
+  return 'score-unknown'
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v4.5l3 2" strokeLinecap="round" />
+    </svg>
   )
 }
 
@@ -76,6 +148,7 @@ export function ReviewApp() {
   const [listNext, setListNext] = useState<string | null>(null)
   const [listUser, setListUser] = useState('')
   const [listSource, setListSource] = useState<'pgn' | 'lichess' | 'chesscom'>('pgn')
+  const [openKey, setOpenKey] = useState<string | null>(null)
   const [archives, setArchives] = useState<string[]>([])
   const [parseProgress, setParseProgress] = useState('')
   const [review, setReview] = useState<GameReview | null>(null)
@@ -223,6 +296,7 @@ export function ReviewApp() {
     setList([])
     setListNext(null)
     setArchives([])
+    setOpenKey(null)
     setAppliedFilter(filter)
     try {
       const result = await resolveImport(text, {
@@ -250,6 +324,7 @@ export function ReviewApp() {
           result: gameRecord.result || '*',
           url: '',
           pgn: undefined,
+          moves: gameRecord.moves.length,
         })))
         importedGames.current = result.games
         setListSource('pgn')
@@ -317,6 +392,8 @@ export function ReviewApp() {
   }, [busy, error, loadMore])
 
   async function openListed(item: ListedGame) {
+    if (busy) return
+    setOpenKey(`${item.source}-${item.id}`)
     try {
       if (listSource === 'pgn') {
         const record = importedGames.current[Number(item.id)]
@@ -501,8 +578,8 @@ export function ReviewApp() {
                 value={source}
                 onChange={setSource}
                 options={[
-                  { value: 'lichess', label: 'Lichess', icon: '/runtime/lichess.svg' },
-                  { value: 'chesscom', label: 'Chess.com', icon: '/runtime/chessdotcom.svg' },
+                  { value: 'lichess', label: 'Lichess', icon: 'lichess' },
+                  { value: 'chesscom', label: 'Chess.com', icon: 'chesscom', brand: 'chesscom' },
                   { value: 'pgn', label: 'PGN' },
                   { value: 'file', label: 'File' },
                 ]}
@@ -590,30 +667,6 @@ export function ReviewApp() {
               {error ? <p className="inline-message error" role="alert">{error}</p> : null}
             </form>
           </section>
-
-          {list.length ? (
-            <section className="panel">
-              <h2>Games</h2>
-              <div className="game-browser">
-              <ul className="game-list">
-                {list.map(item => (
-                  <li key={`${item.source}-${item.id}`}>
-                    <button type="button" className="game-list-item" onClick={() => openListed(item)} disabled={busy}>
-                      <span className="game-list-title">{item.white} vs {item.black}</span>
-                      <span className="game-list-meta">
-                        {[item.result, item.whiteElo && item.blackElo && `${item.whiteElo}/${item.blackElo}`, item.timeControl]
-                          .filter(Boolean).join(' · ')}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {listNext || archives.length ? (
-                <button ref={loadMoreButton} type="button" className="text-button" onClick={loadMore} disabled={busy}>Load more</button>
-              ) : null}
-              </div>
-            </section>
-          ) : null}
 
           {review ? (
             <section className="panel">
@@ -745,6 +798,87 @@ export function ReviewApp() {
             </details>
           ) : null}
 
+      {list.length ? (
+        <section className="panel history-panel" aria-label="Game history">
+          <h2>Game history <span className="history-count">({list.length})</span></h2>
+          <div className="history-scroll">
+            <div className="history-table" role="table">
+              <div className="history-head" role="row">
+                <span>Time</span>
+                <span>Players</span>
+                <span>Result</span>
+                <span>Accuracy</span>
+                <span>Moves</span>
+                <span>Date</span>
+              </div>
+              {list.map(item => {
+                const key = `${item.source}-${item.id}`
+                const active = openKey === key
+                const plies = item.moves ?? plyCount(item.pgn)
+                const moves = plies == null ? '—' : String(Math.ceil(plies / 2))
+                const [whiteScore, blackScore] = scorePair(item.result)
+                const outcome = userOutcome(item, listUser)
+                const showAccuracy = active && review && !progress && (
+                  (item.url && review.game.site === item.url) ||
+                  (listSource === 'pgn' && review.game.white === item.white && review.game.black === item.black)
+                )
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="history-row"
+                    role="row"
+                    aria-current={active ? 'true' : undefined}
+                    aria-disabled={busy || undefined}
+                    onClick={() => openListed(item)}
+                  >
+                    <span className="history-clock">
+                      <ClockIcon />
+                      {clockLabel(item.pgn, item.timeControl)}
+                    </span>
+                    <span className="history-players">
+                      <span className="history-player">
+                        <span className="history-pip white" aria-hidden="true" />
+                        <span className="history-name">{item.white}</span>
+                        {item.whiteElo ? <span className="history-rating">({item.whiteElo})</span> : null}
+                      </span>
+                      <span className="history-player">
+                        <span className="history-pip black" aria-hidden="true" />
+                        <span className="history-name">{item.black}</span>
+                        {item.blackElo ? <span className="history-rating">({item.blackElo})</span> : null}
+                      </span>
+                    </span>
+                    <span className="history-result">
+                      <span className="history-score">
+                        <span className={scoreTone(item.result, 'white')}>{whiteScore}</span>
+                        <span className={scoreTone(item.result, 'black')}>{blackScore}</span>
+                      </span>
+                      {outcome === 'win' ? <span className="history-badge win" aria-label="Win">+</span> : null}
+                      {outcome === 'loss' ? <span className="history-badge loss" aria-label="Loss">−</span> : null}
+                      {outcome === 'draw' ? <span className="history-badge draw" aria-label="Draw">=</span> : null}
+                    </span>
+                    <span className="history-acc">
+                      {showAccuracy && review ? (
+                        <>
+                          <span className="known">{review.summary.whiteAccuracy.toFixed(1)}</span>
+                          <span className="known">{review.summary.blackAccuracy.toFixed(1)}</span>
+                        </>
+                      ) : (
+                        <span className="history-review">{active && progress ? '…' : 'Review'}</span>
+                      )}
+                    </span>
+                    <span className="history-moves">{moves}</span>
+                    <span className="history-date">{formatPlayedAt(item.playedAt)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          {listNext || archives.length ? (
+            <button ref={loadMoreButton} type="button" className="text-button history-more" onClick={loadMore} disabled={busy}>Load more</button>
+          ) : null}
+        </section>
+      ) : null}
 
       <footer className="site-footer">
         <span>Full-game Stockfish review in your browser.</span>

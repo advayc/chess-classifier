@@ -460,7 +460,7 @@ document.querySelector('.skip-link')?.addEventListener('click', event => {
   else board.focus()
 })
 
-const palette = [...'KQRBNPkqrbnp', ''].map(piece => {
+const palette = [...'KQRBNP', ...'kqrbnp', ''].map(piece => {
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'piece-choice'
@@ -472,12 +472,38 @@ const palette = [...'KQRBNPkqrbnp', ''].map(piece => {
     state.palette = piece
     renderPalette()
   })
-  $('piece-tray').append(button)
   return { button, piece }
 })
 
+function arrangePalette() {
+  const whiteAtBottom = state.orientation === 'white'
+  const buttons = new Map(palette.map(item => [item.piece, item.button]))
+  const white = [...'KQRBNP'].map(piece => buttons.get(piece)!)
+  const black = [...'kqrbnp'].map(piece => buttons.get(piece)!)
+  const erase = buttons.get('')!
+  const top = $('tray-top')
+  const bottom = $('tray-bottom')
+  if (whiteAtBottom) {
+    top.setAttribute('aria-label', 'Black pieces')
+    bottom.setAttribute('aria-label', 'White pieces')
+    top.replaceChildren(...black)
+    bottom.replaceChildren(...white)
+  } else {
+    top.setAttribute('aria-label', 'White pieces')
+    bottom.setAttribute('aria-label', 'Black pieces')
+    top.replaceChildren(...white)
+    bottom.replaceChildren(...black)
+  }
+  const eraseSlot = document.getElementById('erase-slot')
+  if (eraseSlot) eraseSlot.replaceChildren(erase)
+  const show = state.editing && !state.cropping
+  top.hidden = !show
+  bottom.hidden = !show
+}
+
 function renderPalette() {
   for (const { button, piece } of palette) button.setAttribute('aria-pressed', String(state.palette === piece))
+  arrangePalette()
 }
 
 function boardIndex(index: number): number {
@@ -508,6 +534,7 @@ function renderBoard() {
   board.classList.toggle('editing', state.editing)
   board.classList.toggle('playable', playing)
   $('editor').hidden = !state.editing
+  arrangePalette()
   $<HTMLButtonElement>('edit-board').setAttribute('aria-pressed', String(state.editing))
   $('edit-label').textContent = state.editing ? 'Done editing' : 'Edit board'
   $('orientation-label').textContent = state.orientation === 'white' ? 'White at bottom' : 'Black at bottom'

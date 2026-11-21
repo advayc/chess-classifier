@@ -41,6 +41,7 @@
           </div>
 
           <div id="board-display">
+            <div id="tray-top" class="piece-tray edge-tray" role="group" aria-label="Pieces at the top" hidden></div>
             <div id="board-frame" class="board-frame">
               <div id="rank-labels" class="ranks" aria-hidden="true"></div>
               <div class="board-surface">
@@ -49,9 +50,10 @@
               </div>
               <div id="file-labels" class="files" aria-hidden="true"></div>
             </div>
+            <div id="tray-bottom" class="piece-tray edge-tray" role="group" aria-label="Pieces at the bottom" hidden></div>
             <div id="editor" class="editor" hidden>
-              <div class="editor-copy"><strong>Piece editor</strong><span>Choose a piece, then select a square.</span></div>
-              <div id="piece-tray" class="piece-tray" role="group" aria-label="Piece palette"></div>
+              <div class="editor-copy"><strong>Piece editor</strong><span>The pieces sit on the same side of the board as that color.</span></div>
+              <div id="erase-slot"></div>
             </div>
             <div id="board-footer" class="board-footer">
               <span id="orientation-label">White at bottom</span>

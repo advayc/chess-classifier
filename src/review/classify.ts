@@ -15,7 +15,7 @@ export type MoveClass =
 
 export const CLASS_ORDER: MoveClass[] = [
   'brilliant', 'great', 'best', 'excellent', 'good', 'book',
-  'inaccuracy', 'mistake', 'blunder', 'miss',
+  'inaccuracy', 'mistake', 'miss', 'blunder',
 ]
 
 export const CLASS_LABEL: Record<MoveClass, string> = {

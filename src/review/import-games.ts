@@ -22,6 +22,8 @@ export interface ListedGame {
   timeControl?: string
   url: string
   pgn?: string
+  /** Half-moves, when already known (pasted PGN). */
+  moves?: number
 }
 
 export interface ImportResult {

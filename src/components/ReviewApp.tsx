@@ -86,6 +86,38 @@ function ChoiceRow<T extends string>({ label, value, options, onChange }: {
   )
 }
 
+type HistorySort = 'newest' | 'oldest' | 'longest' | 'shortest'
+
+const HISTORY_SORTS: { value: HistorySort; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'longest', label: 'Longest' },
+  { value: 'shortest', label: 'Shortest' },
+]
+
+/** Sorts by wall-clock duration, falling back to move count for pasted PGN lists. */
+function sortHistory(list: ListedGame[], sort: HistorySort): ListedGame[] {
+  if (sort === 'newest') return list
+  if (sort === 'oldest') return [...list].reverse()
+  const length = (game: ListedGame) => game.durationMs ?? game.moves
+  const direction = sort === 'longest' ? -1 : 1
+  return [...list].sort((a, b) => {
+    const x = length(a)
+    const y = length(b)
+    if (x === undefined || y === undefined) return x === y ? 0 : x === undefined ? 1 : -1
+    return (x - y) * direction
+  })
+}
+
+function durationLabel(ms?: number): string {
+  if (ms === undefined) return ''
+  const minutes = Math.round(ms / 60_000)
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`
+  if (minutes < 60) return `${minutes} min`
+  if (minutes < 48 * 60) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+  return `${Math.round(minutes / 1440)} days`
+}
+
 function clockLabel(pgn: string | undefined, fallback?: string): string {
   const header = pgn?.match(/\[TimeControl "([^"]+)"\]/)?.[1]
   if (header && header !== '-' && header !== '?') {
@@ -176,6 +208,7 @@ export function ReviewApp() {
   const [list, setList] = useState<ListedGame[]>([])
   const [limit, setLimit] = useState<GameLimit>(DEFAULT_LIMIT)
   const [hasMore, setHasMore] = useState(false)
+  const [historySort, setHistorySort] = useState<HistorySort>('newest')
   const [listUser, setListUser] = useState('')
   const [listSource, setListSource] = useState<'pgn' | 'lichess' | 'chesscom'>('pgn')
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -206,6 +239,7 @@ export function ReviewApp() {
     }
   }, [])
 
+  const sortedList = useMemo(() => sortHistory(list, historySort), [list, historySort])
   const game = review?.game
   const originPly = variation?.from ?? 0
   const maxPly = variation ? variation.from + variation.moves.length : review?.plies.length ?? 0
@@ -812,9 +846,17 @@ export function ReviewApp() {
 
           {list.length > 0 && showHistory ? (
             <section className="panel sidebar-history" aria-label="Game history">
-              <h2>Game history <span className="history-count">({list.length})</span></h2>
+              <div className="history-head">
+                <h2>Game history <span className="history-count">({list.length})</span></h2>
+                <label className="history-sort">
+                  <span className="visually-hidden">Sort games</span>
+                  <select value={historySort} onChange={event => setHistorySort(event.target.value as HistorySort)}>
+                    {HISTORY_SORTS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
               <div className="sidebar-history-list">
-                {list.map(item => {
+                {sortedList.map(item => {
                   const key = `${item.source}-${item.id}`
                   const active = openKey === key
                   const [whiteScore, blackScore] = scorePair(item.result)
@@ -828,7 +870,7 @@ export function ReviewApp() {
                       onClick={() => openListed(item)}
                     >
                       <span className="sidebar-history-meta">
-                        <span>{clockLabel(item.pgn, item.timeControl)}{item.playedAt ? ` · ${new Date(item.playedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}</span>
+                        <span>{clockLabel(item.pgn, item.timeControl)}{item.playedAt ? ` · ${new Date(item.playedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}{item.durationMs !== undefined ? ` · ${durationLabel(item.durationMs)}` : item.moves ? ` · ${Math.ceil(item.moves / 2)} moves` : ''}</span>
                         {outcome ? <span className={`sidebar-history-outcome ${outcome}`}>{outcome === 'win' ? 'Win' : outcome === 'loss' ? 'Loss' : 'Draw'}</span> : null}
                       </span>
                       <span className="sidebar-history-players">

@@ -28,6 +28,8 @@ export interface ListedGame {
   pgn?: string
   /** Half-moves, when already known (pasted PGN). */
   moves?: number
+  /** Wall-clock length of the game, first move to last, when the provider reports it. */
+  durationMs?: number
 }
 
 export interface ImportResult {
@@ -238,6 +240,7 @@ export async function listLichessGames(username: string, until?: string | null, 
     const game = JSON.parse(line) as {
       id: string
       createdAt: number
+      lastMoveAt?: number
       status: string
       winner?: string
       players: { white: { user?: { name: string }; rating?: number }; black: { user?: { name: string }; rating?: number } }
@@ -258,6 +261,7 @@ export async function listLichessGames(username: string, until?: string | null, 
       timeControl: game.speed,
       url: `https://lichess.org/${game.id}`,
       pgn: game.pgn,
+      durationMs: game.lastMoveAt && game.lastMoveAt > game.createdAt ? game.lastMoveAt - game.createdAt : undefined,
     })
     oldest = oldest === null ? game.createdAt : Math.min(oldest, game.createdAt)
   }
@@ -304,8 +308,22 @@ export async function listChessComMonth(archiveUrl: string, username = '', filte
       timeControl: game.time_class,
       url: game.url,
       pgn: game.pgn,
+      durationMs: pgnDuration(game.pgn),
     }
   }).filter(game => matchesFilter(game, username, 'chesscom', filter))
+}
+
+/** Chess.com PGNs carry start and end stamps: [Date]/[StartTime] and [EndDate]/[EndTime]. */
+function pgnDuration(pgn?: string): number | undefined {
+  if (!pgn) return undefined
+  const tag = (name: string) => pgn.match(new RegExp(`\\[${name} "([^"]+)"\\]`))?.[1]
+  const stamp = (date?: string, time?: string) =>
+    date && time && /^\d{4}\.\d{2}\.\d{2}$/.test(date) && /^\d{2}:\d{2}:\d{2}$/.test(time)
+      ? Date.parse(`${date.replaceAll('.', '-')}T${time}Z`) : NaN
+  const start = stamp(tag('UTCDate') ?? tag('Date'), tag('UTCTime') ?? tag('StartTime'))
+  const end = stamp(tag('EndDate'), tag('EndTime'))
+  const length = end - start
+  return Number.isFinite(length) && length >= 0 ? length : undefined
 }
 
 function chessComResult(white: string, black: string): string {

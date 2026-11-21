@@ -282,7 +282,7 @@ function updateAction() {
   $('analyze-label').textContent = running ? 'Stop search' : 'Analyze position'
   const busy = state.scanning || state.cropping || state.pgnLoading
   $<HTMLButtonElement>('analyze').disabled = busy || state.editing || state.scanFailed
-  for (const id of ['load-fen', 'setup-start', 'setup-empty', 'load-pgn', 'choose-pgn', 'open-game']) $<HTMLButtonElement>(id).disabled = busy
+  for (const id of ['load-fen', 'setup-start', 'setup-empty', 'reset-position', 'load-pgn', 'choose-pgn', 'open-game']) $<HTMLButtonElement>(id).disabled = busy
   $<HTMLButtonElement>('crop-button').disabled = busy
   $<HTMLButtonElement>('show-detection').disabled = state.cropping
   $<HTMLButtonElement>('replace-button').disabled = state.cropping || state.pgnLoading
@@ -857,6 +857,7 @@ function resetBoard(fen: string, editing = false) {
 
 $<HTMLButtonElement>('setup-start').addEventListener('click', () => resetBoard(DEFAULT_POSITION))
 $<HTMLButtonElement>('setup-empty').addEventListener('click', () => resetBoard('8/8/8/8/8/8/8/8 w - - 0 1', true))
+$<HTMLButtonElement>('reset-position').addEventListener('click', () => resetBoard(DEFAULT_POSITION))
 
 $<HTMLButtonElement>('load-pgn').addEventListener('click', () => loadPgn($<HTMLTextAreaElement>('pgn-input').value))
 $<HTMLButtonElement>('choose-pgn').addEventListener('click', () => $<HTMLInputElement>('pgn-file').click())

@@ -127,6 +127,8 @@ a { color: var(--accent-dark); text-underline-offset: .2em; }
 .panel + .panel { border-top: 1px solid var(--border); }
 h2 { font-size: 1rem; font-weight: 620; line-height: 1.25; }
 .upload-panel h2, .setup-panel h2 { margin-bottom: .75rem; }
+.setup-panel .section-heading { margin-bottom: .75rem; }
+.setup-panel .section-heading h2 { margin-bottom: 0; }
 
 .source-tabs {
   display: grid;

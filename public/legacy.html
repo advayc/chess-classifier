@@ -42,13 +42,29 @@
 
           <div id="board-display">
             <div id="tray-top" class="piece-tray edge-tray" role="group" aria-label="Pieces at the top" hidden></div>
-            <div id="board-frame" class="board-frame">
-              <div id="rank-labels" class="ranks" aria-hidden="true"></div>
-              <div class="board-surface">
-                <div id="chessboard" class="chessboard" role="group" aria-label="Chessboard" tabindex="-1"></div>
-                <svg id="move-arrow" class="move-arrow" viewBox="0 0 800 800" aria-hidden="true"></svg>
+            <div class="board-settings-wrap">
+              <details id="board-settings" class="board-settings">
+                <summary><span data-icon="gear"></span> Board settings</summary>
+                <div class="board-settings-panel">
+                  <h3>Board settings</h3>
+                  <p>Choose a board</p>
+                  <div id="theme-grid" class="theme-grid" role="group" aria-label="Board theme"></div>
+                  <div class="board-options">
+                    <label><span>Show coordinates</span><input id="pref-coordinates" type="checkbox" /></label>
+                    <label><span>Highlight last move</span><input id="pref-highlights" type="checkbox" /></label>
+                    <label><span>Show legal moves</span><input id="pref-legal-moves" type="checkbox" /></label>
+                    <label><span>Play move sounds</span><input id="pref-sounds" type="checkbox" /></label>
+                  </div>
+                </div>
+              </details>
+              <div id="board-frame" class="board-frame">
+                <div id="rank-labels" class="ranks" aria-hidden="true" hidden></div>
+                <div class="board-surface">
+                  <div id="chessboard" class="chessboard" role="group" aria-label="Chessboard" tabindex="-1"></div>
+                  <svg id="move-arrow" class="move-arrow" viewBox="0 0 800 800" aria-hidden="true"></svg>
+                </div>
+                <div id="file-labels" class="files" aria-hidden="true" hidden></div>
               </div>
-              <div id="file-labels" class="files" aria-hidden="true"></div>
             </div>
             <div id="tray-bottom" class="piece-tray edge-tray" role="group" aria-label="Pieces at the bottom" hidden></div>
             <div id="editor" class="editor" hidden>

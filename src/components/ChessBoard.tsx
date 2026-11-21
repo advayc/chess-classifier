@@ -3,6 +3,16 @@
 import { Chess } from 'chess.js'
 import { useEffect, useMemo, useRef, useState, type PointerEvent, type CSSProperties } from 'react'
 import './board-settings.css'
+import {
+  BOARD_PREFERENCES_KEY,
+  DEFAULT_BOARD_PREFERENCES,
+  THEMES,
+  WOOD_THEMES,
+  loadBoardPreferences,
+  saveBoardPreferences,
+  themeColors,
+  type BoardPreferences,
+} from '../board-preferences'
 import { playChessSound, prepareChessAudio } from '../chess-sound'
 import { icon } from '../icons'
 import { FILES, indexOfSquare, pieceName } from '../position'
@@ -11,21 +21,6 @@ import { CLASS_LABEL, type MoveClass } from '../review/classify'
 import type { GameRecord } from '../types'
 
 const FILES_LIST = [...FILES]
-const WOOD_THEME = ['Wood', '#f0dbb8', '#604025'] as const
-
-const THEMES = [
-  ['Green', '#ebecd0', '#739552'], ['Brown', '#f0d9b5', '#b58863'],
-  ['Blue', '#dee3e6', '#8ca2ad'], ['Blue Marble', '#cbd8e3', '#5682a3'],
-  WOOD_THEME, ['Walnut', '#e9cda5', '#76513c'],
-  ['Maple', '#f2d7ad', '#c18c57'], ['Olive', '#e8e2c3', '#888b55'],
-  ['Gray', '#e5e5e5', '#929292'], ['Slate', '#d7d9d4', '#708078'],
-  ['Purple', '#e8dded', '#9577a5'], ['Ocean', '#d5e8e5', '#5b9493'],
-  ['Sand', '#f2e4c8', '#c3a377'], ['Coral', '#f6ded4', '#c78070'],
-] as const
-
-const WOOD_THEMES = new Set(['Wood', 'Walnut', 'Maple'])
-type BoardPreferences = { theme: string; coordinates: boolean; highlights: boolean; legalMoves: boolean; sounds: boolean }
-const DEFAULTS: BoardPreferences = { theme: WOOD_THEME[0], coordinates: true, highlights: true, legalMoves: true, sounds: true }
 
 export function ChessBoard({
   fen,
@@ -58,25 +53,19 @@ export function ChessBoard({
   selected?: string | null
   targets?: string[]
 }) {
-  const [preferences, setPreferences] = useState<BoardPreferences>(DEFAULTS)
+  const [preferences, setPreferences] = useState<BoardPreferences>(DEFAULT_BOARD_PREFERENCES)
   const [loaded, setLoaded] = useState(false)
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('chess-board-preferences') || '{}')
-      // Move users from the former default while honoring choices made with the new board.
-      const theme = saved.theme === 'Green' && saved.version !== 2 ? DEFAULTS.theme : saved.theme
-      setPreferences({
-        theme: THEMES.some(t => t[0] === theme) ? theme : DEFAULTS.theme,
-        coordinates: typeof saved.coordinates === 'boolean' ? saved.coordinates : true,
-        highlights: typeof saved.highlights === 'boolean' ? saved.highlights : true,
-        legalMoves: typeof saved.legalMoves === 'boolean' ? saved.legalMoves : true,
-        sounds: typeof saved.sounds === 'boolean' ? saved.sounds : DEFAULTS.sounds,
-      })
-    } catch { /* Use defaults if saved settings are invalid. */ }
+    setPreferences(loadBoardPreferences())
     setLoaded(true)
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === BOARD_PREFERENCES_KEY) setPreferences(loadBoardPreferences())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
   }, [])
   useEffect(() => {
-    if (loaded) localStorage.setItem('chess-board-preferences', JSON.stringify({ ...preferences, version: 2 }))
+    if (loaded) saveBoardPreferences(preferences)
   }, [loaded, preferences])
 
   useEffect(() => {
@@ -100,7 +89,7 @@ export function ChessBoard({
     playChessSound(reviewPly >= previous.ply ? lastSan : undefined)
   }, [fen, lastSan, loaded, preferences.sounds, reviewGame, reviewPly])
 
-  const theme = THEMES.find(t => t[0] === preferences.theme) ?? WOOD_THEME
+  const theme = themeColors(preferences.theme)
   const wood = WOOD_THEMES.has(theme[0])
   const highlightedMove = preferences.highlights ? lastMove : null
   const badgeIndex = highlightedMove && moveClass ? displaySquareIndex(highlightedMove.to, orientation) : null

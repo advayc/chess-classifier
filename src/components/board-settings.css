@@ -24,24 +24,24 @@
 .light .board-coordinate { color: var(--dark-square); } .dark .board-coordinate { color: var(--light-square); }
 .rank-coordinate { top: .2rem; left: .2rem; } .file-coordinate { bottom: .2rem; right: .2rem; }
 
-.review-board-frame .board-surface { isolation: isolate; }
-.review-board-frame .square.light { --square-tint: var(--light-square); }
-.review-board-frame .square.dark { --square-tint: var(--dark-square); }
+.board-frame .board-surface { isolation: isolate; }
+.board-frame .square.light { --square-tint: var(--light-square); }
+.board-frame .square.dark { --square-tint: var(--dark-square); }
 .wood-board .chessboard { background: #bc976a url('/board/smoked-maple.webp') center / cover; }
-.review-board-frame.wood-board .square.light { --square-tint: color-mix(in srgb, var(--light-square) 55%, transparent); }
-.review-board-frame.wood-board .square.dark { --square-tint: color-mix(in srgb, var(--dark-square) 70%, transparent); }
-.review-board-frame.wood-board .square { background: var(--square-tint); }
-.review-board-frame.wood-board .square.last-move { --move-tint: #ffcf4260; }
-.review-board-frame .square.last-move.classified-move { --move-tint: color-mix(in srgb, var(--classification-color) 44%, transparent); }
-.review-board-frame .square.last-move.classified-move,
-.review-board-frame.wood-board .square.last-move {
+.board-frame.wood-board .square.light { --square-tint: color-mix(in srgb, var(--light-square) 55%, transparent); }
+.board-frame.wood-board .square.dark { --square-tint: color-mix(in srgb, var(--dark-square) 70%, transparent); }
+.board-frame.wood-board .square { background: var(--square-tint); }
+.board-frame.wood-board .square.last-move { --move-tint: #ffcf4260; }
+.board-frame .square.last-move.classified-move { --move-tint: color-mix(in srgb, var(--classification-color) 44%, transparent); }
+.board-frame .square.last-move.classified-move,
+.board-frame.wood-board .square.last-move {
   background: linear-gradient(var(--move-tint), var(--move-tint)), var(--square-tint);
 }
 .wood-board .light .board-coordinate { color: #55391f; }
 .wood-board .dark .board-coordinate { color: #fff1d8; }
 
-.review-board-frame .square img { position: relative; z-index: 2; width: 94%; height: 94%; filter: drop-shadow(0 1px 1px #24170555); }
-.review-board-frame .board-coordinate { z-index: 3; }
+.board-frame .square img { position: relative; z-index: 2; width: 82%; height: 82%; }
+.board-frame .board-coordinate { z-index: 3; }
 .board-move-class {
   --badge-inset: clamp(.5rem, 2.5%, 1.35rem);
   position: absolute;
@@ -55,5 +55,14 @@
 }
 .board-move-class svg { display: block; width: 100%; height: auto; }
 .board-move-class svg > circle { stroke: #fff7e7; stroke-width: .8; }
-.review-board-frame .review-arrow { z-index: 1; fill: #99b632; opacity: .87; }
-.review-board-frame .review-arrow path { stroke: #35431d; stroke-width: 1.4; stroke-linejoin: round; }
+.board-frame .review-arrow { z-index: 1; fill: #99b632; opacity: .87; }
+.board-frame .review-arrow path { stroke: #35431d; stroke-width: 1.4; stroke-linejoin: round; }
+
+/* Position page: match review board gutter when using on-square coordinates. */
+.board-frame.hide-coordinates {
+  --coordinate-size: 0rem;
+}
+.board-frame.hide-coordinates .ranks,
+.board-frame.hide-coordinates .files {
+  display: none;
+}

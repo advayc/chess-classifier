@@ -707,7 +707,7 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   .page { padding-inline: 1rem; max-width: 36rem; }
   .page-heading { padding-block: 1.15rem 1rem; }
   .workspace { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
-  .board-frame { --coordinate-size: 1rem; }
+  .board-frame { --coordinate-size: 0rem; }
   .board-heading-row { margin-bottom: .5rem; }
   .board-actions > button { min-height: 2.5rem; }
   .board-actions > .icon-button { min-width: 2.5rem; }
@@ -728,3 +728,54 @@ html.embed .page-heading,
 html.embed .skip-link { display: none; }
 html.embed body { background: transparent; }
 html.embed .page { max-width: none; margin: 0; padding: 0 0 1.25rem; }
+
+.board-settings-wrap { position: relative; }
+.board-settings { position: relative; display: flex; justify-content: flex-end; margin-bottom: .5rem; }
+.board-settings summary { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; list-style: none; color: var(--secondary); font-size: .85rem; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: .35rem; }
+.board-settings summary svg { display: block; }
+.board-settings summary::-webkit-details-marker { display: none; }
+.board-settings summary:hover { color: var(--ink); }
+.board-settings-panel { position: absolute; z-index: 20; top: 100%; right: 0; width: min(26rem, 90vw); max-height: min(70vh, 38rem); overflow: auto; background: #292825; color: #eee; padding: 1rem; border: 1px solid #55534c; border-radius: .5rem; box-shadow: 0 12px 35px #0008; }
+.board-settings-panel h3 { margin: 0; font-size: 1.1rem; }
+.board-settings-panel p { margin: .65rem 0; color: #bdbbb5; font-size: .85rem; }
+.theme-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .6rem; }
+.theme-choice { min-width: 0; padding: .3rem; border: 2px solid transparent; border-radius: .3rem; background: transparent; color: #eee; font-size: .72rem; cursor: pointer; }
+.theme-choice[aria-pressed="true"] { border-color: #a9c87a; background: #3b4033; }
+.theme-choice:focus-visible { outline: 2px solid white; }
+.theme-preview { display: grid; grid-template-columns: repeat(2, 1fr); aspect-ratio: 1; margin-bottom: .3rem; background-color: var(--preview-light); background-image: conic-gradient(var(--preview-dark) 25%, transparent 0 50%, var(--preview-dark) 0 75%, transparent 0); background-size: 50% 50%; }
+.theme-preview img { width: 100%; height: 100%; object-fit: contain; }
+.theme-preview.wood-preview {
+  background-image: conic-gradient(color-mix(in srgb, var(--preview-dark) 82%, transparent) 25%, transparent 0 50%, color-mix(in srgb, var(--preview-dark) 82%, transparent) 0 75%, transparent 0), linear-gradient(#f5debd60, #f5debd60), url('/board/smoked-maple.webp');
+  background-size: 50% 50%, cover, cover;
+}
+.board-options { border-top: 1px solid #55534c; margin-top: 1rem; padding-top: .4rem; }
+.board-options label { display: flex; justify-content: space-between; align-items: center; padding: .45rem 0; font-size: .85rem; cursor: pointer; }
+.board-options input { accent-color: #86a85c; width: 1.1rem; height: 1.1rem; }
+.board-coordinate { position: absolute; z-index: 2; pointer-events: none; font-size: clamp(.55rem, 1.4vw, .85rem); font-weight: 700; line-height: 1; }
+.light .board-coordinate { color: var(--dark-square); }
+.dark .board-coordinate { color: var(--light-square); }
+.rank-coordinate { top: .2rem; left: .2rem; }
+.file-coordinate { bottom: .2rem; right: .2rem; }
+
+.board-frame {
+  --coordinate-size: 0rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.board-frame .board-surface { isolation: isolate; grid-column: 1; }
+.board-frame .square.light { --square-tint: var(--light-square); }
+.board-frame .square.dark { --square-tint: var(--dark-square); }
+.wood-board .chessboard { background: #bc976a url('/board/smoked-maple.webp') center / cover; }
+.board-frame.wood-board .square.light { --square-tint: color-mix(in srgb, var(--light-square) 55%, transparent); }
+.board-frame.wood-board .square.dark { --square-tint: color-mix(in srgb, var(--dark-square) 70%, transparent); }
+.board-frame.wood-board .square { background: var(--square-tint); }
+.board-frame.wood-board .square.last-move {
+  --move-tint: #ffcf4260;
+  background: linear-gradient(var(--move-tint), var(--move-tint)), var(--square-tint);
+}
+.wood-board .light .board-coordinate { color: #55391f; }
+.wood-board .dark .board-coordinate { color: #fff1d8; }
+.board-frame .square img { position: relative; z-index: 2; width: 82%; height: 82%; }
+.board-frame .board-coordinate { z-index: 3; }
+.board-frame .ranks,
+.board-frame .files { display: none; }

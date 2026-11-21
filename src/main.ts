@@ -1,5 +1,15 @@
 import { DEFAULT_POSITION, type Chess, type Square } from 'chess.js'
+import {
+  BOARD_PREFERENCES_KEY,
+  THEMES,
+  WOOD_THEMES,
+  applyBoardTheme,
+  loadBoardPreferences,
+  saveBoardPreferences,
+  type BoardPreferences,
+} from './board-preferences'
 import { createCropEditor } from './crop'
+import { playChessSound, prepareChessAudio } from './chess-sound'
 import { createDetectionView, type Detection } from './detection-view'
 import { Engine } from './engine'
 import { gameResults, positionKey, recordMove, uciMove } from './game'
@@ -118,6 +128,80 @@ $<HTMLButtonElement>('theme-toggle').addEventListener('click', () => {
   setTheme(currentTheme() === 'dark' ? 'light' : 'dark')
 })
 renderThemeToggle()
+
+let boardPreferences: BoardPreferences = loadBoardPreferences()
+const boardFrame = $('board-frame')
+const themeGrid = $('theme-grid')
+const prefCoordinates = $<HTMLInputElement>('pref-coordinates')
+const prefHighlights = $<HTMLInputElement>('pref-highlights')
+const prefLegalMoves = $<HTMLInputElement>('pref-legal-moves')
+const prefSounds = $<HTMLInputElement>('pref-sounds')
+
+function renderBoardSettings(): void {
+  themeGrid.replaceChildren(...THEMES.map(([name, light, dark]) => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'theme-choice'
+    button.setAttribute('aria-pressed', String(boardPreferences.theme === name))
+    const preview = document.createElement('span')
+    preview.className = `theme-preview${WOOD_THEMES.has(name) ? ' wood-preview' : ''}`
+    preview.style.setProperty('--preview-light', light)
+    preview.style.setProperty('--preview-dark', dark)
+    preview.setAttribute('aria-hidden', 'true')
+    preview.append(pieceImage('N'), pieceImage('k'))
+    const label = document.createElement('span')
+    label.textContent = name
+    button.append(preview, label)
+    button.addEventListener('click', () => {
+      boardPreferences = { ...boardPreferences, theme: name }
+      saveBoardPreferences(boardPreferences)
+      applyBoardTheme(boardFrame, boardPreferences)
+      renderBoardSettings()
+    })
+    return button
+  }))
+  prefCoordinates.checked = boardPreferences.coordinates
+  prefHighlights.checked = boardPreferences.highlights
+  prefLegalMoves.checked = boardPreferences.legalMoves
+  prefSounds.checked = boardPreferences.sounds
+}
+
+function setBoardPreference<K extends keyof BoardPreferences>(key: K, value: BoardPreferences[K]): void {
+  boardPreferences = { ...boardPreferences, [key]: value }
+  saveBoardPreferences(boardPreferences)
+  applyBoardTheme(boardFrame, boardPreferences)
+  renderBoardSettings()
+  renderBoard()
+}
+
+for (const [input, key] of [
+  [prefCoordinates, 'coordinates'],
+  [prefHighlights, 'highlights'],
+  [prefLegalMoves, 'legalMoves'],
+  [prefSounds, 'sounds'],
+] as const) {
+  input.addEventListener('change', () => setBoardPreference(key, input.checked))
+}
+
+window.addEventListener('pointerup', event => {
+  if (!event.isTrusted || !boardPreferences.sounds) return
+  void prepareChessAudio()
+}, { once: false })
+window.addEventListener('keydown', event => {
+  if (!event.isTrusted || !boardPreferences.sounds) return
+  void prepareChessAudio()
+})
+
+applyBoardTheme(boardFrame, boardPreferences)
+renderBoardSettings()
+
+window.addEventListener('storage', event => {
+  if (event.key !== BOARD_PREFERENCES_KEY) return
+  boardPreferences = loadBoardPreferences()
+  applyBoardTheme(boardFrame, boardPreferences)
+  renderBoardSettings()
+  renderBoard()
+})
 
 function pieceImage(piece: string): HTMLImageElement {
   const image = document.createElement('img')
@@ -540,23 +624,39 @@ function renderBoard() {
   $('orientation-label').textContent = state.orientation === 'white' ? 'White at bottom' : 'Black at bottom'
   $<HTMLButtonElement>('rotate-import').hidden = state.origin !== 'screenshot' || state.editing || Boolean(line.length)
 
-  const firstRank = state.orientation === 'white' ? '87654321' : '12345678'
-  const orderedFiles = state.orientation === 'white' ? FILES : [...FILES].reverse().join('')
-  $('rank-labels').innerHTML = [...firstRank].map(rank => `<span>${rank}</span>`).join('')
-  $('file-labels').innerHTML = [...orderedFiles].map(file => `<span>${file}</span>`).join('')
+  applyBoardTheme(boardFrame, boardPreferences)
+  const fileEdge = state.orientation === 'white' ? 'a' : 'h'
+  const rankEdge = state.orientation === 'white' ? '1' : '8'
+  const coordKey = boardPreferences.coordinates ? `${state.orientation}` : 'off'
   for (const [displayIndex, tile] of tiles.entries()) {
     const index = boardIndex(displayIndex)
     const square = squareAt(index)
     const piece = squares[index]
-    if (tile.dataset.piece !== piece) {
-      tile.replaceChildren(...(piece ? [pieceImage(piece)] : []))
+    if (tile.dataset.piece !== piece || tile.dataset.coords !== coordKey) {
+      const children: Node[] = []
+      if (boardPreferences.coordinates && square[0] === fileEdge) {
+        const rank = document.createElement('span')
+        rank.className = 'board-coordinate rank-coordinate'
+        rank.textContent = square[1]
+        children.push(rank)
+      }
+      if (boardPreferences.coordinates && square[1] === rankEdge) {
+        const file = document.createElement('span')
+        file.className = 'board-coordinate file-coordinate'
+        file.textContent = square[0]
+        children.push(file)
+      }
+      if (piece) children.push(pieceImage(piece))
+      tile.replaceChildren(...children)
       tile.dataset.piece = piece
+      tile.dataset.coords = coordKey
     }
     const uncertain = !state.ply && state.uncertain.has(index)
-    const legalTarget = playing && state.targets.some(move => move.to === square)
+    const legalTarget = boardPreferences.legalMoves && playing && state.targets.some(move => move.to === square)
     const checked = index === checkedKing
+    const highlightMove = boardPreferences.highlights && lastMove && [lastMove.from, lastMove.to].includes(square)
     tile.classList.toggle('uncertain', uncertain)
-    tile.classList.toggle('last-move', Boolean(lastMove && [lastMove.from, lastMove.to].includes(square)))
+    tile.classList.toggle('last-move', Boolean(highlightMove))
     tile.classList.toggle('selected-square', playing && square === state.selection)
     tile.classList.toggle('legal-target', legalTarget)
     tile.classList.toggle('check-square', checked)
@@ -632,6 +732,7 @@ function navigateGame(ply: number): void {
 
 function playMove(move: Move): void {
   if (!canPlay()) return
+  if (boardPreferences.sounds) playChessSound(move.san)
   const game: GameRecord = state.game || { startFen: state.current?.fen ?? DEFAULT_POSITION, moves: [], ply: 0 }
   const at = game.ply ?? 0
   if (game.moves[at]?.uci === uciMove(move)) {

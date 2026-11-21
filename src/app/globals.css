@@ -756,6 +756,7 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   grid-template-columns: 1.75rem minmax(0, 1fr);
   column-gap: .5rem;
 }
+.review-board-frame .board-surface { grid-column: 2; }
 .review-board-frame .eval-bar {
   grid-column: 1;
   grid-row: 1;

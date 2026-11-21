@@ -565,7 +565,7 @@ export function ReviewApp() {
         if (!best || !played) throw new Error('Could not evaluate this move.')
         const bestWin = sideWinChance(best.type, best.score)
         const playedWin = sideWinChance(played.type, played.score)
-        const label = classifyMove({ playedUci: uci, bestUci: best.pv[0], bestWin, playedWin, secondWin: lines[1] ? sideWinChance(lines[1].type, lines[1].score) : undefined, color: move.color })
+        const label = classifyMove({ playedUci: uci, bestUci: best.pv[0], bestWin, playedWin, secondWin: lines[1] ? sideWinChance(lines[1].type, lines[1].score) : undefined, forced: legal.length === 1, color: move.color })
         setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, label, bestWin, playedWin } : entry) } : current)
       } catch {
         setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, error: 'Could not evaluate this move.' } : entry) } : current)
@@ -1052,7 +1052,7 @@ export function ReviewApp() {
       </div>
 
       <footer className="site-footer">
-        <span>Full-game Stockfish review in your browser.</span>
+        <span>Full-game Stockfish review in your browser. Move icons and sounds from <a href="https://www.chess.com/">Chess.com</a>.</span>
         <a href="/licenses.html">Open-source credits</a>
       </footer>
     </div>

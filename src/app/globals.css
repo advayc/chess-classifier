@@ -1110,6 +1110,7 @@ button.paired-move:focus-visible { outline-offset: -2px; }
   font-size: .76rem;
 }
 .review-class-icon { display: grid; place-items: center; }
+.class-icon { display: inline-block; flex: none; vertical-align: middle; user-select: none; }
 .review-class-row strong { text-align: center; font-variant-numeric: tabular-nums; }
  .sidebar-history-list {
   max-height: min(32rem, 55vh);

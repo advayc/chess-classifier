@@ -53,8 +53,7 @@
   filter: drop-shadow(0 1px 2px #2d211660);
   pointer-events: none;
 }
-.board-move-class svg { display: block; width: 100%; height: auto; }
-.board-move-class svg > circle { stroke: #fff7e7; stroke-width: .8; }
+.board-move-class .class-icon { display: block; width: 100%; height: auto; filter: drop-shadow(0 1px 2px rgb(0 0 0 / .35)); }
 .board-frame .review-arrow { z-index: 1; fill: #9cc542; opacity: .8; }
 
 /* Position page: match review board gutter when using on-square coordinates. */

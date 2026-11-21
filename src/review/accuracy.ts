@@ -7,7 +7,7 @@ import type { MoveClass } from './classify'
 export function accuracyFor(moves: { dropPct: number; label: MoveClass }[]): number {
   if (!moves.length) return 0
   const scores = moves.map(move => {
-    if (move.label === 'book') return 100
+    if (move.label === 'book' || move.label === 'forced') return 100
     const loss = Math.max(0, Math.min(100, move.dropPct))
     return Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1668))
   })

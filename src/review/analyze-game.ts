@@ -140,6 +140,7 @@ export async function analyzeGame(
       playedWin,
       secondWin: second ? sideWinChance(second.type, second.score) : undefined,
       book,
+      forced: legal.length === 1,
       materialSacrifice: materialSacrifice(beforeFen, playedLine.pv, turn),
       color: turn,
       priorOpponent,

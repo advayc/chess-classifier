@@ -8,13 +8,14 @@ export type MoveClass =
   | 'excellent'
   | 'good'
   | 'book'
+  | 'forced'
   | 'inaccuracy'
   | 'mistake'
   | 'blunder'
   | 'miss'
 
 export const CLASS_ORDER: MoveClass[] = [
-  'brilliant', 'great', 'best', 'excellent', 'good', 'book',
+  'brilliant', 'great', 'best', 'excellent', 'good', 'book', 'forced',
   'inaccuracy', 'mistake', 'miss', 'blunder',
 ]
 
@@ -25,6 +26,7 @@ export const CLASS_LABEL: Record<MoveClass, string> = {
   excellent: 'Excellent',
   good: 'Good',
   book: 'Book',
+  forced: 'Forced',
   inaccuracy: 'Inaccuracy',
   mistake: 'Mistake',
   blunder: 'Blunder',
@@ -48,6 +50,8 @@ export interface ClassInput {
   playedWin: number
   /** Second-best win chance; used for “only move”. */
   secondWin?: number
+  /** True when the played move was the only legal move. */
+  forced?: boolean
   /** True when the move was still in the opening sample. */
   book?: boolean
   /** Material lost by the player (positive = sacrifice). */
@@ -58,6 +62,7 @@ export interface ClassInput {
 }
 
 export function classifyMove(input: ClassInput): MoveClass {
+  if (input.forced) return 'forced'
   if (input.book && input.playedUci === input.bestUci) return 'book'
   if (input.book && winLossPct(input.bestWin, input.playedWin) < THRESHOLDS.good) return 'book'
 

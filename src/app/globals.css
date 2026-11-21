@@ -762,7 +762,6 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
   position: relative;
   width: 1.75rem;
   height: 100%;
-  min-height: 18rem;
   overflow: hidden;
   border-radius: 3px;
   background: #171717;
@@ -1005,9 +1004,10 @@ button.history-row[aria-disabled='true'] { cursor: progress; }
   box-shadow: inset 2px 0 0 var(--accent);
 }
 .review-moves-paired {
-  max-height: 20rem;
+  max-height: min(18rem, 40vh);
   overflow: auto;
   border-top: 1px solid var(--border);
+  scrollbar-width: thin;
 }
 .paired-move-row {
   display: grid;
@@ -1037,9 +1037,16 @@ button.paired-move {
   font-weight: 650;
   text-align: left;
 }
-button.paired-move:hover { background: color-mix(in srgb, white 5%, transparent); }
+button.paired-move:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+button.paired-move[aria-current='step'] { background: var(--accent-mist); }
+button.paired-move:focus-visible { outline-offset: -2px; }
 .paired-move.empty { min-height: 2.15rem; }
-.review-scorecard { padding-bottom: .75rem; }
+.review-scorecard {
+  --review-stat-columns: minmax(0, 1.25fr) minmax(2.5rem, 1fr) 1.5rem minmax(2.5rem, 1fr);
+  padding-bottom: .75rem;
+}
+.review-summary-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .35rem .75rem; margin-bottom: .9rem; }
+.review-summary-heading span { color: var(--secondary); font-size: .8rem; }
 .review-player-scores {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1058,20 +1065,23 @@ button.paired-move:hover { background: color-mix(in srgb, white 5%, transparent)
 .review-player-scores strong { font-size: 1.35rem; line-height: 1.1; }
 .review-player-rating { color: var(--secondary); font-size: .72rem; }
 .review-class-table {
-  display: grid;
-  margin-top: .55rem;
+  max-height: min(22rem, 45vh);
+  overflow-y: auto;
+  margin-top: 1rem;
   border-top: 1px solid var(--border);
 }
+.review-class-table:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
 .review-class-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 2.2rem 2.2rem;
+  grid-template-columns: var(--review-stat-columns);
   align-items: center;
-  min-height: 1.85rem;
+  gap: .5rem;
+  min-height: 2.1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
   font-size: .76rem;
 }
-.review-class-row > span { display: flex; align-items: center; gap: .35rem; }
-.review-class-row strong { text-align: right; font-variant-numeric: tabular-nums; }
+.review-class-icon { display: grid; place-items: center; }
+.review-class-row strong { text-align: center; font-variant-numeric: tabular-nums; }
  .sidebar-history-list {
   max-height: min(32rem, 55vh);
   overflow-y: auto;
@@ -1117,12 +1127,10 @@ button.paired-move:hover { background: color-mix(in srgb, white 5%, transparent)
 .history-piece.black { background: #333; }
 .history-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-rating { color: var(--secondary); font-size: .73rem; font-weight: 500; }
-.eval-graph svg { display: block; margin-top: .6rem; cursor: crosshair; }
 .graph-mark { fill: var(--secondary); }
 .mark-blunder, .mark-miss { fill: #c74a4a; }
 .mark-mistake { fill: #e08a3a; }
 .mark-brilliant, .mark-great { fill: #1baca6; }
-.eval-graph input { display: block; width: 100%; }
 
 @media (max-width: 52rem) {
   .review-workspace { grid-template-columns: minmax(0, 1fr); }
@@ -1135,32 +1143,69 @@ button.paired-move:hover { background: color-mix(in srgb, white 5%, transparent)
 .review-player-rating b { display: block; margin-top: .2rem; color: var(--ink); font-size: 1.05rem; font-variant-numeric: tabular-nums; }
 .rating-note { color: var(--secondary); font-size: .72rem; line-height: 1.4; margin: .55rem 0; }
 
-button.history-return {
+.review-toolbar {
   display: flex;
-  width: 100%;
-  min-height: 3rem;
-  justify-content: flex-start;
-  padding: .75rem 1rem;
-  border-bottom: 1px solid var(--border);
-  color: var(--ink);
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+  padding-block: .65rem;
 }
-button.history-return:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
-button.history-return:focus-visible { outline-offset: -3px; }
+.review-toolbar .history-return { min-height: 2.5rem; color: var(--ink); }
+.review-scorecard .start-review-button {
+  width: 100%;
+  margin-top: 1rem;
+  border-color: #f5f2ec;
+  background: #f5f2ec;
+  color: #171716;
+}
+.review-scorecard .start-review-button:hover:enabled {
+  background: #e6e0d4;
+  border-color: #e6e0d4;
+}
 
-.review-stats { margin-top: .8rem; }
-.review-stats-header, .review-stats-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(4rem, .65fr) minmax(4rem, .65fr); align-items: center; gap: .5rem; }
+.review-stats, .review-class-table { scrollbar-width: thin; scrollbar-gutter: stable; }
+.review-stats { overflow: hidden; }
+.review-stats-header, .review-stats-row { display: grid; grid-template-columns: var(--review-stat-columns); align-items: center; gap: .5rem; }
+.review-stats-header > :last-child, .review-stats-row > :last-child { grid-column: 4; }
 .review-stats-header { color: var(--secondary); font-size: .72rem; padding: 0 0 .5rem; }
 .review-stats-header span:not(:first-child) { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-stats-row { border-top: 1px solid var(--border); padding: .65rem 0; font-size: .82rem; font-weight: 620; }
 .review-stats-row strong { text-align: center; padding: .4rem .2rem; border-radius: .3rem; font-size: .9rem; font-variant-numeric: tabular-nums; }
 .review-stats-row .stat-white { background: #eee; color: #222; }
 .review-stats-row .stat-black { background: #343434; color: #fff; }
-.eval-slider-label { display: flex; justify-content: space-between; gap: .5rem; color: var(--secondary); font-size: .7rem; margin-top: .7rem; }
-.eval-graph input[type='range'] { appearance: none; -webkit-appearance: none; height: 6px; border-radius: 999px; margin: .75rem 0 .65rem; cursor: pointer; }
-.eval-graph input[type='range']::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--accent); }
-.eval-graph input[type='range']::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); border: 3px solid var(--paper); box-shadow: 0 0 0 1px var(--accent); }
-
-.eval-graph { margin-top: 1rem; }
+.eval-graph { display: grid; gap: .75rem; margin-top: 1.25rem; }
 .eval-graph-heading { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-size: .8rem; }
 .eval-graph-heading span { color: var(--secondary); font-size: .72rem; }
-.eval-graph svg { border: 1px solid var(--border); border-radius: 4px; }
+.eval-graph svg { display: block; border: 1px solid var(--border); border-radius: 4px; cursor: crosshair; }
+.eval-graph-caption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: .25rem 1rem;
+  color: var(--secondary);
+  font-size: .7rem;
+  line-height: 1.4;
+}
+
+.review-guide {
+  display: grid;
+  gap: .9rem;
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+.review-guide-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .4rem .75rem;
+}
+.review-guide-heading h2 { font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.review-guide-class { display: inline-flex; align-items: center; gap: .35rem; font-size: .8rem; font-weight: 650; }
+.review-guide .coach-line { margin: .55rem 0 0; color: var(--secondary); font-size: .88rem; line-height: 1.5; }
+.review-guide-actions, .review-guide-nav, .review-guide-key-nav { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
+.review-guide-nav { justify-content: space-between; gap: .65rem 1rem; border-top: 1px solid var(--border); padding-top: .85rem; }
+.review-guide-nav .line-controls { color: var(--secondary); font-size: .8rem; }
+.review-guide-key-nav .small-button { border-color: var(--button-fill); background: var(--button-fill); color: var(--button-text); }
+.review-guide-key-nav .small-button:hover:enabled { background: var(--button-hover); }
+.review-engine-lines > summary { cursor: pointer; font-size: .9rem; font-weight: 650; }

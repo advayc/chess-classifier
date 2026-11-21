@@ -216,14 +216,14 @@ export function makeReview(game: GameRecord, plies: ReviewedPly[], graph: number
 }
 
 export function coachLine(ply: ReviewedPly): string {
-  const { label, move, bestSan, dropPct } = ply
-  if (label === 'book') return `${move.san} is a book move in this opening.`
+  const { label, dropPct } = ply
+  if (label === 'book') return 'This move follows a known opening line.'
   if (label === 'best' || label === 'brilliant' || label === 'great') {
-    return `${move.san} was ${label === 'best' ? 'the best move' : `a ${label} move`}.`
+    return 'This move kept the position close to the engine’s best evaluation.'
   }
   if (label === 'miss') {
-    return `${move.san} missed the chance to punish the previous mistake. ${bestSan} was stronger.`
+    return 'There was a stronger way to take advantage of the previous mistake.'
   }
-  const lost = Math.abs(dropPct).toFixed(1)
-  return `${move.san} was a ${label} (about ${lost}% win chance). ${bestSan} was better.`
+  const lost = Math.max(0, dropPct).toFixed(1)
+  return `Compared with the engine’s best move, this gave up about ${lost} percentage points of estimated win chance.`
 }

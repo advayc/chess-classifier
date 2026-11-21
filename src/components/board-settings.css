@@ -1,8 +1,9 @@
 .board-settings-wrap { position: relative; }
 .board-settings { position: relative; display: flex; justify-content: flex-end; margin-bottom: .5rem; }
-.board-settings summary { cursor: pointer; list-style: none; color: var(--secondary); font-size: .85rem; padding: .35rem .55rem; border: 1px solid var(--border); border-radius: .35rem; }
+.board-settings summary { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; list-style: none; color: var(--secondary); font-size: .85rem; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: .35rem; }
+.board-settings summary svg { display: block; }
 .board-settings summary::-webkit-details-marker { display: none; }
-.board-settings summary:hover { color: var(--foreground); }
+.board-settings summary:hover { color: var(--ink); }
 .board-settings-panel { position: absolute; z-index: 20; top: 100%; right: 0; width: min(26rem, 90vw); max-height: min(70vh, 38rem); overflow: auto; background: #292825; color: #eee; padding: 1rem; border: 1px solid #55534c; border-radius: .5rem; box-shadow: 0 12px 35px #0008; }
 .board-settings-panel h3 { margin: 0; font-size: 1.1rem; }
 .board-settings-panel p { margin: .65rem 0; color: #bdbbb5; font-size: .85rem; }
@@ -12,9 +13,47 @@
 .theme-choice:focus-visible { outline: 2px solid white; }
 .theme-preview { display: grid; grid-template-columns: repeat(2, 1fr); aspect-ratio: 1; margin-bottom: .3rem; background-color: var(--preview-light); background-image: conic-gradient(var(--preview-dark) 25%, transparent 0 50%, var(--preview-dark) 0 75%, transparent 0); background-size: 50% 50%; }
 .theme-preview img { width: 100%; height: 100%; object-fit: contain; }
+.theme-preview.wood-preview {
+  background-image: conic-gradient(color-mix(in srgb, var(--preview-dark) 82%, transparent) 25%, transparent 0 50%, color-mix(in srgb, var(--preview-dark) 82%, transparent) 0 75%, transparent 0), linear-gradient(#f5debd60, #f5debd60), url('/board/smoked-maple.webp');
+  background-size: 50% 50%, cover, cover;
+}
 .board-options { border-top: 1px solid #55534c; margin-top: 1rem; padding-top: .4rem; }
 .board-options label { display: flex; justify-content: space-between; align-items: center; padding: .45rem 0; font-size: .85rem; cursor: pointer; }
 .board-options input { accent-color: #86a85c; width: 1.1rem; height: 1.1rem; }
 .board-coordinate { position: absolute; z-index: 2; pointer-events: none; font-size: clamp(.55rem, 1.4vw, .85rem); font-weight: 700; line-height: 1; }
 .light .board-coordinate { color: var(--dark-square); } .dark .board-coordinate { color: var(--light-square); }
 .rank-coordinate { top: .2rem; left: .2rem; } .file-coordinate { bottom: .2rem; right: .2rem; }
+
+.review-board-frame .board-surface { isolation: isolate; }
+.review-board-frame .square.light { --square-tint: var(--light-square); }
+.review-board-frame .square.dark { --square-tint: var(--dark-square); }
+.wood-board .chessboard { background: #bc976a url('/board/smoked-maple.webp') center / cover; }
+.review-board-frame.wood-board .square.light { --square-tint: color-mix(in srgb, var(--light-square) 55%, transparent); }
+.review-board-frame.wood-board .square.dark { --square-tint: color-mix(in srgb, var(--dark-square) 70%, transparent); }
+.review-board-frame.wood-board .square { background: var(--square-tint); }
+.review-board-frame.wood-board .square.last-move { --move-tint: #ffcf4260; }
+.review-board-frame .square.last-move.classified-move { --move-tint: color-mix(in srgb, var(--classification-color) 44%, transparent); }
+.review-board-frame .square.last-move.classified-move,
+.review-board-frame.wood-board .square.last-move {
+  background: linear-gradient(var(--move-tint), var(--move-tint)), var(--square-tint);
+}
+.wood-board .light .board-coordinate { color: #55391f; }
+.wood-board .dark .board-coordinate { color: #fff1d8; }
+
+.review-board-frame .square img { position: relative; z-index: 2; width: 94%; height: 94%; filter: drop-shadow(0 1px 1px #24170555); }
+.review-board-frame .board-coordinate { z-index: 3; }
+.board-move-class {
+  --badge-inset: clamp(.5rem, 2.5%, 1.35rem);
+  position: absolute;
+  z-index: 4;
+  inset: clamp(var(--badge-inset), var(--badge-y), calc(100% - var(--badge-inset))) auto auto
+    clamp(var(--badge-inset), var(--badge-x), calc(100% - var(--badge-inset)));
+  width: clamp(.95rem, 4.8%, 2.5rem);
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 2px #2d211660);
+  pointer-events: none;
+}
+.board-move-class svg { display: block; width: 100%; height: auto; }
+.board-move-class svg > circle { stroke: #fff7e7; stroke-width: .8; }
+.review-board-frame .review-arrow { z-index: 1; fill: #99b632; opacity: .87; }
+.review-board-frame .review-arrow path { stroke: #35431d; stroke-width: 1.4; stroke-linejoin: round; }

@@ -65,12 +65,7 @@ export function EvalGraph({
           />
         ) : null}
       </svg>
-      <div className="eval-slider-label"><span>Move {Math.ceil(currentPly / 2)}{currentPly ? (currentPly % 2 ? ' · White' : ' · Black') : ' · Start'}</span><span>{plies.length} half-moves analyzed</span></div>
-      <input type="range" min={0} max={Math.max(0, graph.length - 1)}
-        value={Math.min(currentPly, graph.length - 1)} onChange={event => onSelect(Number(event.target.value))}
-        aria-label="Jump to a move on the evaluation graph"
-        aria-valuetext={currentPly === 0 ? 'Starting position' : `Move ${Math.ceil(currentPly / 2)}, ${currentPly % 2 ? 'White' : 'Black'}`}
-        style={{ background: `linear-gradient(to right, var(--accent) ${graph.length > 1 ? Math.min(currentPly, graph.length - 1) / (graph.length - 1) * 100 : 0}%, var(--border) 0)` }} />
+      <div className="eval-graph-caption"><span>{currentPly ? `Move ${Math.ceil(currentPly / 2)} · ${currentPly % 2 ? 'White' : 'Black'}` : 'Starting position'}</span><span>{plies.length} half-moves analyzed</span></div>
     </div>
   )
 }

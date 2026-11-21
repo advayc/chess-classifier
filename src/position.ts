@@ -1,57 +1,57 @@
 import { Chess, validateFen } from 'chess.js'
+import type { Position, ValidatedPosition } from './types'
 
 export const FILES = 'abcdefgh'
-export const EXAMPLE_FEN = 'r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2NP1N2/PPP2PPP/R1BQ1RK1 w kq - 4 6'
-export const PIECE_NAMES = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }
-export const CASTLING = {
+export const PIECE_NAMES: Record<string, string> = { k: 'king', q: 'queen', r: 'rook', b: 'bishop', n: 'knight', p: 'pawn' }
+export const CASTLING: Record<string, [string, string][]> = {
   K: [['e1', 'K'], ['h1', 'R']],
   Q: [['e1', 'K'], ['a1', 'R']],
   k: [['e8', 'k'], ['h8', 'r']],
   q: [['e8', 'k'], ['a8', 'r']],
 }
 
-export function fromPlacement(placement) {
+export function fromPlacement(placement: string): string[] {
   return placement.split('/').flatMap(rank =>
-    [...rank].flatMap(symbol => /[1-8]/.test(symbol) ? Array(Number(symbol)).fill('') : [symbol]),
+    [...rank].flatMap(symbol => /[1-8]/.test(symbol) ? Array<string>(Number(symbol)).fill('') : [symbol]),
   )
 }
 
-export function toPlacement(squares) {
+export function toPlacement(squares: string[]): string {
   return Array.from({ length: 8 }, (_, row) =>
     squares.slice(row * 8, row * 8 + 8).map(piece => piece || '1').join('')
       .replace(/1+/g, run => String(run.length)),
   ).join('/')
 }
 
-export function squareAt(index) {
+export function squareAt(index: number): string {
   return FILES[index % 8] + (8 - Math.floor(index / 8))
 }
 
-export function indexOfSquare(square) {
+export function indexOfSquare(square: string): number {
   return (8 - Number(square[1])) * 8 + FILES.indexOf(square[0])
 }
 
-export function pieceName(piece) {
+export function pieceName(piece: string): string {
   return piece ? `${piece === piece.toUpperCase() ? 'White' : 'Black'} ${PIECE_NAMES[piece.toLowerCase()]}` : 'empty'
 }
 
-export function fromFen(fen) {
+export function fromFen(fen: string): Position {
   const [placement, turn, castling, ep, halfmove, fullmove] = fen.trim().split(/\s+/)
   return { squares: fromPlacement(placement), turn, castling, ep, halfmove, fullmove }
 }
 
-export function toFen(position) {
+export function toFen(position: Position): string {
   return [
     toPlacement(position.squares), position.turn, position.castling || '-',
     position.ep || '-', position.halfmove, position.fullmove,
   ].join(' ')
 }
 
-export function canCastle(squares, right) {
+export function canCastle(squares: string[], right: string): boolean {
   return CASTLING[right].every(([square, piece]) => squares[indexOfSquare(square)] === piece)
 }
 
-export function validatePosition(position) {
+export function validatePosition(position: Position): ValidatedPosition {
   if (!position.turn) return { error: 'Choose who moves next.' }
   if (!/^\d+$/.test(position.halfmove) || !/^\d+$/.test(position.fullmove) ||
       Number(position.halfmove) > 9999 || Number(position.fullmove) > 9999) {
@@ -60,7 +60,7 @@ export function validatePosition(position) {
 
   const fen = toFen(position)
   const validation = validateFen(fen)
-  if (!validation.ok) return { error: validation.error.replace(/^Invalid FEN: /, '').replace(/^./, s => s.toUpperCase()) }
+  if (!validation.ok) return { error: (validation.error ?? '').replace(/^Invalid FEN: /, '').replace(/^./, s => s.toUpperCase()) }
 
   for (const color of ['w', 'b']) {
     const pieces = position.squares.filter(piece => piece && (piece === piece.toUpperCase()) === (color === 'w'))
@@ -74,7 +74,7 @@ export function validatePosition(position) {
 
   const chess = new Chess(fen)
   const otherKing = position.squares.indexOf(position.turn === 'w' ? 'k' : 'K')
-  if (chess.isAttacked(squareAt(otherKing), position.turn)) {
+  if (chess.isAttacked(squareAt(otherKing) as never, position.turn as never)) {
     return { error: 'The side that just moved is in check. Check the pieces and side to move.' }
   }
 
@@ -90,23 +90,38 @@ export function validatePosition(position) {
   return { fen, chess }
 }
 
-export function fromFenInput(value) {
+export function fromFenInput(value: string): { error: string; position?: undefined } | { error?: undefined; position: Position } {
   const fen = value.trim().replace(/\s+/g, ' ')
   if (fen.split(' ').length !== 6) return { error: 'Paste a complete FEN with all six fields.' }
   const validation = validateFen(fen)
-  if (!validation.ok) return { error: validation.error }
+  if (!validation.ok) return { error: validation.error ?? 'Invalid FEN.' }
   const position = fromFen(fen)
   const { error } = validatePosition(position)
   return error ? { error } : { position }
 }
 
-export function replayLine(fen, uciMoves) {
+export interface LineMove {
+  from: string
+  to: string
+  color: 'w' | 'b'
+  san: string
+  piece: import('chess.js').PieceSymbol
+  uci: string
+  fen: string
+  before: string
+  moveNumber: number
+}
+
+export function replayLine(fen: string, uciMoves: string[]): LineMove[] {
   const chess = new Chess(fen)
-  const line = []
+  const line: LineMove[] = []
   for (const uci of uciMoves) {
     try {
       const move = chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] })
-      line.push({ ...move, fen: chess.fen(), moveNumber: chess.moveNumber() - (move.color === 'b' ? 1 : 0) })
+      line.push({
+        from: move.from, to: move.to, color: move.color, san: move.san, piece: move.piece, uci, before: move.before,
+        fen: chess.fen(), moveNumber: chess.moveNumber() - (move.color === 'b' ? 1 : 0),
+      })
     } catch {
       break
     }
@@ -114,7 +129,7 @@ export function replayLine(fen, uciMoves) {
   return line
 }
 
-export function lineNotation(line) {
+export function lineNotation(line: LineMove[]): string {
   return line.map((move, index) => {
     if (move.color === 'w') return `${move.moveNumber}.${move.san}`
     if (index === 0) return `${move.moveNumber}…${move.san}`

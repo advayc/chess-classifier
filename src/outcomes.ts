@@ -1,7 +1,9 @@
+import type { OutcomeCounts } from './types'
+
 const labels = ['White wins', 'Draws', 'Black wins']
 const kinds = ['white', 'draw', 'black']
 
-export function outcomePercentages(counts) {
+export function outcomePercentages(counts: number[]): number[] | null {
   const total = counts.reduce((sum, count) => sum + count, 0)
   if (!total) return null
   const exact = counts.map(count => count * 100 / total)
@@ -12,8 +14,8 @@ export function outcomePercentages(counts) {
   return rounded
 }
 
-export function outcomeBar(counts) {
-  const percentages = outcomePercentages(counts)
+export function outcomeBar(counts: OutcomeCounts | number[]): HTMLSpanElement {
+  const percentages = outcomePercentages(counts) ?? [0, 0, 0]
   const bar = document.createElement('span')
   bar.className = 'outcome-bar'
   const description = percentages.map((value, index) => `${labels[index]} ${value}%`).join(', ')

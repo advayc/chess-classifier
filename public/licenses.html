@@ -2,24 +2,24 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Open-source credits · Quiet Square</title>
+<title>Open-source credits · Chess Engine</title>
 <link rel="icon" href="./mark.svg">
 <script>
   try {
     const theme = localStorage.getItem('quiet-square-theme')
-    if (['dark', 'light', 'system'].includes(theme)) document.documentElement.dataset.theme = theme
+    if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
   } catch {}
 </script>
 <style>
   :root { color-scheme: dark; background: light-dark(#f5f4f0, #0d0d0d); }
   :root[data-theme="light"] { color-scheme: light; }
-  :root[data-theme="system"] { color-scheme: light dark; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   body { color: light-dark(#222220, #efeeea); font: 1rem/1.6 system-ui, sans-serif; margin: 2rem auto; padding: 0 1.25rem; max-width: 42rem; }
   a { color: inherit; text-underline-offset: .2em; }
   li { margin-block: 1rem; }
 </style>
 <main>
-  <a href="./">Quiet Square</a>
+  <a href="./">Chess Engine</a>
   <h1>Open-source credits</h1>
   <ul>
     <li><strong>Stockfish 19</strong> runs via Nathan Rugg’s Stockfish.js 19.0.1 WebAssembly port. <a href="./runtime/stockfish-license.txt">GPLv3 license</a> · <a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.1">Corresponding source and build instructions</a></li>
@@ -27,6 +27,10 @@
     <li><strong>Chess pieces</strong> by Colin M. L. Burnett. <a href="./pieces/license.txt">GPLv2 or later</a> · <a href="https://github.com/lichess-org/lila/tree/0e6b748940bdaa3e972613aaa15e29cfd22aa48c/public/piece/cburnett">Source SVGs</a></li>
     <li><strong>ONNX Runtime Web</strong> by Microsoft. <a href="https://github.com/microsoft/onnxruntime/blob/main/LICENSE">MIT license</a></li>
     <li><strong>chess.js</strong> by Jeff Hlywa. <a href="https://github.com/jhlywa/chess.js/blob/master/LICENSE">BSD-2-Clause license</a></li>
+    <li><strong>PGN Parser</strong> by Michael Liebelt. <a href="./runtime/pgn-parser-license.txt">Apache 2.0 license</a> · <a href="https://github.com/mliebelt/pgn-parser">Source</a></li>
+    <li><strong>Opening statistics</strong> are aggregated from 25,000 finished games in the October 2025 <a href="https://database.lichess.org/#standard_games">Lichess standard rated database</a>, released under CC0.</li>
+    <li><strong>Opening names</strong> from the <a href="https://github.com/lichess-org/chess-openings">Lichess chess-openings dataset</a>, released under CC0.</li>
+    <li><strong>Import marks</strong> from <a href="https://simpleicons.org/">Simple Icons</a>. The Chess.com and Lichess marks identify the respective import sources.</li>
     <li><strong>Instrument Sans</strong> by Instrument. <a href="https://github.com/Instrument/instrument-sans/blob/main/OFL.txt">SIL Open Font License</a></li>
   </ul>
 </main>

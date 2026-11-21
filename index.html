@@ -7,33 +7,23 @@
     <script>
       try {
         const theme = localStorage.getItem('quiet-square-theme')
-        if (['dark', 'light', 'system'].includes(theme)) document.documentElement.dataset.theme = theme
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
       } catch {}
     </script>
-    <meta name="description" content="Turn a chess screenshot into an editable position and analyze it privately with Stockfish." />
+    <meta name="description" content="Find the next chess move from a screenshot, FEN, PGN, or custom board with Stockfish." />
     <link rel="icon" type="image/svg+xml" href="./mark.svg" />
     <title>Quiet Square · Chess screenshot analysis</title>
   </head>
   <body>
     <a class="skip-link" href="#chessboard">Skip to chessboard</a>
-    <header class="site-header">
-      <div class="header-inner">
-        <div class="brand"><img src="./mark.svg" width="34" height="34" alt="" /><span>Quiet Square</span></div>
-        <div class="header-tools">
-          <div class="privacy"><span data-icon="lock"></span><span class="privacy-long">Runs on your device</span><span class="privacy-short">On-device</span></div>
-          <label class="theme-control"><span data-icon="theme"></span>
-            <select id="theme" aria-label="Color theme">
-              <option value="dark">Dark</option>
-              <option value="light">Light</option>
-              <option value="system">System</option>
-            </select>
-          </label>
-        </div>
-      </div>
-    </header>
 
     <main class="page">
-      <h1 class="page-title">Chess analysis</h1>
+      <div class="page-heading">
+        <h1 class="page-title">Chess analysis</h1>
+        <button id="theme-toggle" class="icon-button" type="button" title="Switch to light mode" aria-label="Switch to light mode">
+          <span data-icon="sun"></span>
+        </button>
+      </div>
 
       <div class="workspace">
         <section class="board-panel" aria-labelledby="board-heading">
@@ -71,6 +61,25 @@
               </div>
             </div>
             <button id="use-preview" type="button" class="text-button" hidden>Analyze from this move</button>
+            <details id="detection" class="detection" hidden>
+              <summary>
+                <span>Screenshot detection</span>
+                <span id="detection-count" class="detection-count"></span>
+                <span data-icon="chevron-down"></span>
+              </summary>
+              <div class="detection-toolbar">
+                <p id="detection-help">Red boxes show classified squares. Dashed boxes need review.</p>
+                <button id="detection-zoom" class="small-button" type="button">Zoom to board</button>
+              </div>
+              <svg id="detection-image" class="detection-image" role="group" tabindex="0"
+                aria-label="Screenshot with red detection boxes. Use arrow keys to inspect the labels."
+                aria-describedby="detection-help">
+                <image id="detection-photo" x="0" y="0" aria-hidden="true"></image>
+                <rect id="detection-outline" class="detection-outline" aria-hidden="true"></rect>
+                <g id="detection-squares" aria-hidden="true"></g>
+              </svg>
+              <p id="detection-readout" class="detection-readout" role="status">Select a box to inspect its label and confidence.</p>
+            </details>
             <div id="game-history" class="game-history" hidden>
               <div class="history-heading">
                 <h3 id="history-label">Moves</h3>
@@ -128,6 +137,7 @@
                 <div class="source-copy">
                   <span id="source-name"></span>
                   <button id="crop-button" class="text-button" type="button">Crop &amp; rescan</button>
+                  <button id="show-detection" class="text-button" type="button" aria-controls="detection" hidden>View detection</button>
                 </div>
                 <button id="replace-button" class="icon-button" type="button" title="Replace screenshot" aria-label="Replace screenshot" data-icon="upload"></button>
                 <button id="remove-button" class="icon-button" type="button" title="Remove screenshot" aria-label="Remove screenshot" data-icon="close"></button>
@@ -160,17 +170,22 @@
             </div>
 
             <div id="source-pgn" class="source-form" role="tabpanel" aria-labelledby="tab-pgn" hidden>
-              <label for="pgn-input">Game PGN</label>
-              <textarea id="pgn-input" rows="4" spellcheck="false" placeholder="Paste a game or an archive of games"></textarea>
-              <input id="pgn-file" type="file" accept=".pgn,.txt,application/x-chess-pgn,text/plain" hidden />
-              <div class="source-actions">
-                <button id="load-pgn" type="button" class="small-button">Load PGN</button>
-                <button id="choose-pgn" type="button" class="text-button">Choose a PGN file</button>
+              <div id="pgn-entry">
+                <label for="pgn-input">Game PGN</label>
+                <textarea id="pgn-input" rows="4" spellcheck="false" placeholder="Paste a game or an archive of games"></textarea>
+                <input id="pgn-file" type="file" accept=".pgn,.txt,application/x-chess-pgn,text/plain" hidden />
+                <div class="source-actions">
+                  <button id="load-pgn" type="button" class="small-button">Load PGN</button>
+                  <button id="choose-pgn" type="button" class="text-button">Choose a PGN file</button>
+                </div>
               </div>
               <div id="game-picker" class="game-picker" hidden>
                 <label for="game-select">Imported game</label>
                 <select id="game-select"></select>
-                <button id="open-game" type="button" class="text-button">Open game from start</button>
+                <div class="source-actions">
+                  <button id="open-game" type="button" class="text-button">Back to game start</button>
+                  <button id="import-another" type="button" class="text-button">Import another PGN</button>
+                </div>
               </div>
               <p class="inline-message" id="pgn-message" role="status" hidden></p>
             </div>
@@ -217,13 +232,13 @@
                 <span class="status-indicator" aria-hidden="true"></span>
                 <span id="engine-status-label" role="status"></span>
                 <span id="engine-depth"></span>
-            </div>
-            <div id="search-track" class="search-track" aria-hidden="true"></div>
-            <p id="engine-loading" class="inline-message" hidden>First load downloads the full 95 MB engine.</p>
-            <p id="engine-error" class="inline-message error" role="alert" hidden></p>
-            <p id="engine-outcomes-label" class="outcome-caption" hidden>Engine estimates · White / Draw / Black</p>
-            <div id="move-list" class="move-list"></div>
-            <button id="deeper" type="button" class="text-button deeper" hidden>Keep searching <span data-icon="search"></span></button>
+              </div>
+              <div id="search-track" class="search-track" aria-hidden="true"></div>
+              <p id="engine-loading" class="inline-message" hidden>First load downloads the full 95 MB engine.</p>
+              <p id="engine-error" class="inline-message error" role="alert" hidden></p>
+              <p id="engine-outcomes-label" class="outcome-caption" hidden>Engine estimates · White / Draw / Black</p>
+              <div id="move-list" class="move-list"></div>
+              <button id="deeper" type="button" class="text-button deeper" hidden>Keep searching <span data-icon="search"></span></button>
             </div>
             <details id="game-results" class="game-results" open hidden>
               <summary>Game results <span data-icon="chevron-down"></span></summary>

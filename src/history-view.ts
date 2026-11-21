@@ -1,12 +1,23 @@
-export function createHistoryView({ container, moves, heading, previous, next, navigate }) {
-  let current
+import type { GameRecord } from './types'
 
-  function moveButton(label, ply) {
+interface HistoryElements {
+  container: HTMLElement
+  moves: HTMLElement
+  heading: HTMLElement
+  previous: HTMLButtonElement
+  next: HTMLButtonElement
+  navigate: (ply: number) => void
+}
+
+export function createHistoryView({ container, moves, heading, previous, next, navigate }: HistoryElements) {
+  let current = 0
+
+  function moveButton(label: string, ply: number): HTMLButtonElement {
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'history-move'
     button.textContent = label
-    button.dataset.ply = ply
+    button.dataset.ply = String(ply)
     button.setAttribute('aria-pressed', String(current === ply))
     button.addEventListener('click', () => navigate(ply))
     return button
@@ -19,25 +30,25 @@ export function createHistoryView({ container, moves, heading, previous, next, n
     event.preventDefault()
     const ply = current + (event.key === 'ArrowLeft' ? -1 : 1)
     navigate(ply)
-    moves.querySelector(`[data-ply="${current}"]`)?.focus()
+    moves.querySelector<HTMLElement>(`[data-ply="${current}"]`)?.focus()
   })
 
-  return function render(game, editing) {
-    container.hidden = !game?.moves.length || editing
-    if (container.hidden) return
-    current = game.ply
+  return function render(game: GameRecord | null, hidden: boolean): void {
+    container.hidden = !game?.moves.length || hidden
+    if (container.hidden || !game) return
+    current = game.ply ?? 0
     heading.textContent = game.title || 'Played moves'
     previous.disabled = !current
     next.disabled = current >= game.moves.length
-    const focusedPly = document.activeElement?.dataset.ply
+    const focusedPly = (document.activeElement as HTMLElement | null)?.dataset?.ply
 
     const start = document.createElement('div')
     start.className = 'history-start'
     start.append(moveButton('Start', 0))
-    const nodes = [start]
-    let row
+    const nodes: HTMLElement[] = [start]
+    let row: HTMLElement | undefined
     for (const [index, move] of game.moves.entries()) {
-      if (move.color === 'w' || index === 0) {
+      if (move.color === 'w' || index === 0 || !row) {
         row = document.createElement('div')
         row.className = 'history-row'
         const number = document.createElement('span')
@@ -56,8 +67,8 @@ export function createHistoryView({ container, moves, heading, previous, next, n
       nodes.push(result)
     }
     moves.replaceChildren(...nodes)
-    if (focusedPly !== undefined) moves.querySelector(`[data-ply="${focusedPly}"]`)?.focus({ preventScroll: true })
-    const selected = moves.querySelector('[aria-pressed=true]')
+    if (focusedPly !== undefined) moves.querySelector<HTMLElement>(`[data-ply="${focusedPly}"]`)?.focus({ preventScroll: true })
+    const selected = moves.querySelector<HTMLElement>('[aria-pressed=true]')
     if (selected && selected.offsetTop + selected.offsetHeight > moves.scrollTop + moves.clientHeight) {
       moves.scrollTop = selected.offsetTop + selected.offsetHeight - moves.clientHeight
     } else if (selected && selected.offsetTop < moves.scrollTop) {

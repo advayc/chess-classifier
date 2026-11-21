@@ -18,6 +18,24 @@ function elo(tags: Record<string, unknown>, name: string): number | undefined {
   return Number.isFinite(value) && value > 0 ? value : undefined
 }
 
+function ratedGame(tags: Record<string, unknown>): boolean | undefined {
+  const rated = tag(tags, 'Rated')?.toLowerCase()
+  if (rated === 'true' || rated === 'false') return rated === 'true'
+  const mode = tag(tags, 'Mode') ?? ''
+  const event = tag(tags, 'Event') ?? ''
+  if (/^(casual|unrated)$/i.test(mode) || /\b(casual|unrated)\b/i.test(event)) return false
+  if (/^rated$/i.test(mode) || /^rated\b/i.test(event)) return true
+  return undefined
+}
+
+function playedAt(tags: ParseTree['tags']): string | undefined {
+  const date = tags?.UTCDate?.value ?? tags?.Date?.value
+  if (!date || !/^\d{4}\.\d{2}\.\d{2}$/.test(date)) return undefined
+  const time = tags?.UTCTime?.value ?? '00:00:00'
+  const stamp = Date.parse(`${date.replaceAll('.', '-')}T${time}Z`)
+  return Number.isFinite(stamp) ? new Date(stamp).toISOString() : undefined
+}
+
 /** Returns null for games that are empty, not standard chess, or illegal. */
 function toGame(tree: ParseTree): GameRecord | null {
   const tags = (tree.tags ?? {}) as Record<string, unknown>
@@ -36,6 +54,8 @@ function toGame(tree: ParseTree): GameRecord | null {
     return {
       startFen, title: `${white} vs ${black}`, result: tag(tags, 'Result') || '*', moves,
       white, black, whiteElo: elo(tags, 'WhiteElo'), blackElo: elo(tags, 'BlackElo'), site: tag(tags, 'Site'),
+      link: tag(tags, 'Link'), rated: ratedGame(tags),
+      playedAt: playedAt(tree.tags), timeControl: tree.tags?.TimeControl?.value,
     }
   } catch {
     return null

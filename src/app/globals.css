@@ -1132,7 +1132,36 @@ button.paired-move:focus-visible { outline-offset: -2px; }
 .review-class-icon { display: grid; place-items: center; }
 .class-icon { display: inline-block; flex: none; vertical-align: middle; user-select: none; }
 .review-class-row strong { text-align: center; font-variant-numeric: tabular-nums; }
- .sidebar-history-list {
+.sidebar-history .history-head { display: flex; flex-wrap: wrap; padding: 0 0 .55rem; }
+.history-performance {
+  margin-top: .9rem;
+  padding: .8rem .9rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: .45rem;
+  background: var(--toggle-surface);
+  font-variant-numeric: tabular-nums;
+}
+.history-performance-heading,
+.history-performance-record { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.history-performance-heading h3 { margin: 0; font-size: .9rem; font-weight: 660; }
+.history-performance-heading .history-sort,
+.history-performance-heading select { max-width: 100%; min-width: 0; }
+.history-performance-heading > span,
+.history-performance-score > span,
+.history-performance-sample,
+.history-performance-record,
+.history-performance p { font-size: .77rem; color: var(--secondary); }
+.history-performance-score { display: flex; align-items: baseline; flex-wrap: wrap; gap: .4rem .75rem; margin-top: .45rem; }
+.history-performance-score strong { font-size: 2.15rem; line-height: 1; letter-spacing: -.04em; }
+.history-performance-sample { margin-top: .4rem; }
+.history-performance-bar { display: flex; gap: 2px; height: .34rem; margin: .65rem 0 .4rem; overflow: hidden; border-radius: .2rem; }
+.history-performance-bar > span { flex-basis: 0; }
+.history-performance-bar .win { background: var(--white-outcome); }
+.history-performance-bar .draw { background: var(--draw-outcome); }
+.history-performance-bar .loss { background: var(--black-outcome); }
+.history-performance p { margin-top: .55rem; line-height: 1.4; }
+.sidebar-history-list {
   max-height: min(32rem, 55vh);
   overflow-y: auto;
   margin-top: .9rem;

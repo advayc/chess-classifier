@@ -11,10 +11,12 @@ import openingSample from '../opening-sample.json'
 import type { EngineInfo, GameRecord, OpeningSample } from '../types'
 import { analyzeGame, coachLine, evaluateOnce, makeReview, type GameReview, type ReviewedPly } from '../review/analyze-game'
 import { CLASS_LABEL, CLASS_ORDER, classifyMove, type MoveClass } from '../review/classify'
+import { userOutcome } from '../review/history-performance'
 import { sideWinChance } from '../review/win-prob'
 import { ClassIcon } from '../review/class-icons'
 import {
   DEFAULT_LIMIT,
+  listedClockLabel,
   listedToRecord,
   resolveImport,
   type GameColor,
@@ -51,6 +53,7 @@ function moreLabel(limit: GameLimit): string {
 import { ChessBoard, fenAtPly } from './ChessBoard'
 import { lineNotation, replayLine } from '../position'
 import { EvalGraph } from './EvalGraph'
+import { HistoryPerformance, type PerformanceSelection } from './HistoryPerformance'
 
 type VariationMove = { id: string; from: string; to: string; uci: string; san: string; label?: MoveClass; bestWin?: number; playedWin?: number; error?: string }
 type Variation = { from: number; returnPly: number; moves: VariationMove[] }
@@ -118,22 +121,6 @@ function durationLabel(ms?: number): string {
   return `${Math.round(minutes / 1440)} days`
 }
 
-function clockLabel(pgn: string | undefined, fallback?: string): string {
-  const header = pgn?.match(/\[TimeControl "([^"]+)"\]/)?.[1]
-  if (header && header !== '-' && header !== '?') {
-    if (header.startsWith('1/')) return 'Daily'
-    const [baseRaw, incRaw] = header.split('+')
-    const base = Number(baseRaw)
-    const inc = incRaw ? Number(incRaw) : 0
-    if (Number.isFinite(base) && base > 0) {
-      if (base >= 60 && base % 60 === 0) return inc ? `${base / 60}+${inc}` : `${base / 60} min`
-      return inc ? `${base}s+${inc}` : `${base}s`
-    }
-  }
-  if (!fallback) return '—'
-  return fallback.charAt(0).toUpperCase() + fallback.slice(1)
-}
-
 function plyCount(pgn?: string): number | null {
   if (!pgn) return null
   const body = pgn.replace(/\[[^\]]*\]/g, ' ').replace(/\{[^}]*\}/g, ' ').replace(/;[^\n]*/g, ' ')
@@ -146,11 +133,8 @@ function plyCount(pgn?: string): number | null {
   return count || null
 }
 
-function formatPlayedAt(iso?: string): string {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+function formatPlayedAt(iso: string, timeZone?: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone })
 }
 
 function scorePair(result: string): [string, string] {
@@ -158,18 +142,6 @@ function scorePair(result: string): [string, string] {
   if (result === '0-1') return ['0', '1']
   if (result === '1/2-1/2') return ['½', '½']
   return ['–', '–']
-}
-
-function userOutcome(item: ListedGame, username: string): 'win' | 'loss' | 'draw' | null {
-  const me = username.trim().toLowerCase()
-  if (!me) return null
-  const asWhite = item.white.toLowerCase() === me
-  const asBlack = item.black.toLowerCase() === me
-  if (!asWhite && !asBlack) return null
-  if (item.result === '1/2-1/2') return 'draw'
-  if (item.result === '1-0') return asWhite ? 'win' : 'loss'
-  if (item.result === '0-1') return asBlack ? 'win' : 'loss'
-  return null
 }
 
 function scoreTone(result: string, side: 'white' | 'black'): string {
@@ -210,7 +182,7 @@ export function ReviewApp() {
   const [hasMore, setHasMore] = useState(false)
   const [historySort, setHistorySort] = useState<HistorySort>('newest')
   const [listUser, setListUser] = useState('')
-  const [listSource, setListSource] = useState<'pgn' | 'lichess' | 'chesscom'>('pgn')
+  const [performanceSelection, setPerformanceSelection] = useState<PerformanceSelection | null>(null)
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(true)
   const [parseProgress, setParseProgress] = useState('')
@@ -389,6 +361,8 @@ export function ReviewApp() {
     setError('')
     setParseProgress('')
     setList([])
+    setListUser('')
+    setPerformanceSelection(null)
     setHasMore(false)
     pagerRef.current = null
     setOpenKey(null)
@@ -412,27 +386,30 @@ export function ReviewApp() {
         return
       }
       if (result.games && result.games.length > 1) {
-        setList(result.games.map((gameRecord, index) => ({
+        const history = result.games.map((gameRecord, index): ListedGame => ({
           id: String(index),
-          source: 'lichess' as const,
+          source: 'pgn',
           white: gameRecord.white || 'White',
           black: gameRecord.black || 'Black',
           whiteElo: gameRecord.whiteElo,
           blackElo: gameRecord.blackElo,
           result: gameRecord.result || '*',
-          url: '',
-          pgn: undefined,
+          ratedStandard: gameRecord.rated,
+          site: gameRecord.site,
+          url: gameRecord.link ?? '',
           moves: gameRecord.moves.length,
-        })))
+          playedAt: gameRecord.playedAt,
+          timeControl: gameRecord.timeControl,
+        }))
+        history.sort((a, b) => (b.playedAt ?? '').localeCompare(a.playedAt ?? ''))
         importedGames.current = result.games
-        setListSource('pgn')
+        setList(history)
         return
       }
       if (result.list) {
         const pager = result.pager ?? null
         pagerRef.current = pager
         setList(result.list)
-        setListSource(result.kind === 'chesscom-user' ? 'chesscom' : 'lichess')
         setListUser(pager?.username ?? '')
         setHasMore(pager?.hasMore ?? false)
         let total = result.list.length
@@ -489,7 +466,7 @@ export function ReviewApp() {
     setOpenKey(`${item.source}-${item.id}`)
     setShowHistory(false)
     try {
-      if (listSource === 'pgn') {
+      if (item.source === 'pgn') {
         const record = importedGames.current[Number(item.id)]
         if (record) await runReview(record)
         return
@@ -855,12 +832,14 @@ export function ReviewApp() {
                   </select>
                 </label>
               </div>
+              <HistoryPerformance games={list} username={listUser} selection={performanceSelection} onSelect={setPerformanceSelection} />
               <div className="sidebar-history-list">
                 {sortedList.map(item => {
                   const key = `${item.source}-${item.id}`
                   const active = openKey === key
                   const [whiteScore, blackScore] = scorePair(item.result)
                   const outcome = userOutcome(item, listUser)
+                  const clock = item.source === 'pgn' ? listedClockLabel(item.timeControl) : listedClockLabel(item.pgn?.match(/\[TimeControl "([^"]+)"\]/)?.[1], item.timeControl)
                   return (
                     <button
                       key={key}
@@ -870,7 +849,7 @@ export function ReviewApp() {
                       onClick={() => openListed(item)}
                     >
                       <span className="sidebar-history-meta">
-                        <span>{clockLabel(item.pgn, item.timeControl)}{item.playedAt ? ` · ${new Date(item.playedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}{item.durationMs !== undefined ? ` · ${durationLabel(item.durationMs)}` : item.moves ? ` · ${Math.ceil(item.moves / 2)} moves` : ''}</span>
+                        <span>{clock}{item.playedAt ? ` · ${formatPlayedAt(item.playedAt, item.source === 'pgn' ? 'UTC' : undefined)}` : ''}{item.durationMs !== undefined ? ` · ${durationLabel(item.durationMs)}` : item.moves ? ` · ${Math.ceil(item.moves / 2)} moves` : ''}</span>
                         {outcome ? <span className={`sidebar-history-outcome ${outcome}`}>{outcome === 'win' ? 'Win' : outcome === 'loss' ? 'Loss' : 'Draw'}</span> : null}
                       </span>
                       <span className="sidebar-history-players">

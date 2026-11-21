@@ -38,6 +38,10 @@ export interface GameRecord {
   whiteElo?: number
   blackElo?: number
   site?: string
+  link?: string
+  rated?: boolean
+  playedAt?: string
+  timeControl?: string
   /** Set while the board shows a review variation that left the played game. */
   variationFrom?: number
 }

@@ -575,14 +575,52 @@ const palette = [...'KQRBNP', ...'kqrbnp', ''].map(piece => {
   button.type = 'button'
   button.className = 'piece-choice'
   button.setAttribute('aria-label', piece ? pieceName(piece) : 'Erase piece')
-  button.title = piece ? pieceName(piece) : 'Erase piece'
+  const number = piece ? 'kqrbnp'.indexOf(piece.toLowerCase()) + 1 : 0
+  const shortcut = piece ? (piece === piece.toUpperCase() ? `${piece} / ${number}` : `Shift ${piece.toUpperCase()} / ${number}`) : 'E'
+  button.title = `${piece ? pieceName(piece) : 'Erase piece'} (${shortcut})`
+  button.setAttribute('aria-label', button.title)
   if (piece) button.append(pieceImage(piece))
   else button.innerHTML = icon('erase')
+  const key = document.createElement('span')
+  key.className = 'piece-shortcut'
+  key.textContent = piece ? (piece === piece.toUpperCase() ? String(number) : `⇧${number}`) : 'E'
+  button.append(key)
   button.addEventListener('click', () => {
     state.palette = piece
     renderPalette()
   })
   return { button, piece }
+})
+
+window.addEventListener('keydown', event => {
+  if (!state.editing || state.cropping || event.ctrlKey || event.metaKey || event.altKey || event.repeat) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]') || document.querySelector('dialog[open]')) return
+  const numberKey = /^Digit[1-6]$/.test(event.code) ? Number(event.code.slice(-1)) : 0
+  const key = numberKey ? 'kqrbnp'[numberKey - 1] : event.key.toLowerCase()
+  if (!'kqrbnpe'.includes(key) || key.length !== 1) return
+  event.preventDefault()
+  state.palette = key === 'e' ? '' : event.shiftKey ? key : key.toUpperCase()
+  renderPalette()
+})
+
+window.addEventListener('keydown', event => {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.repeat) return
+  const target = event.target as HTMLElement | null
+  if (target?.closest('input, textarea, select, [contenteditable="true"]') || document.querySelector('dialog[open]')) return
+  const key = event.key.toLowerCase()
+  if (key === 'b') {
+    if (state.cropping) return
+    event.preventDefault()
+    if (state.editing || canPlay()) tiles[state.cursor].focus()
+    else board.focus()
+    return
+  }
+  const id: Record<string, string> = { f: 'flip-board', e: 'edit-board', a: 'analyze', arrowleft: 'previous', arrowright: 'next' }
+  const button = id[key] ? document.getElementById(id[key]) as HTMLButtonElement | null : null
+  if (!button || button.disabled || button.closest('[hidden]')) return
+  event.preventDefault()
+  button.click()
 })
 
 function arrangePalette() {

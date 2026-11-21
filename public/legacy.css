@@ -822,3 +822,20 @@ html.embed .board-settings { margin-left: calc(1.75rem + .5rem); }
 .board-frame .board-coordinate { z-index: 3; }
 .board-frame .ranks,
 .board-frame .files { display: none; }
+
+/* Editor palette: a compact set of labeled tools. */
+.edge-tray { grid-template-columns: repeat(6, minmax(0, 3.1rem)); gap: .3rem; }
+.edge-tray .piece-choice, #erase-slot .piece-choice {
+  position: relative; width: 100%; aspect-ratio: auto; min-height: 3.3rem;
+  padding: .2rem .2rem 1rem; border-radius: 7px; background: var(--paper);
+}
+.edge-tray .piece-choice img { width: 2rem; height: 2rem; }
+#erase-slot .piece-choice { width: 3.1rem; }
+#erase-slot .piece-choice svg { width: 1.5rem; height: 1.5rem; }
+.piece-shortcut { position: absolute; bottom: .15rem; left: 0; right: 0; color: var(--secondary); font-size: .58rem; font-weight: 600; line-height: 1; text-align: center; white-space: nowrap; }
+.edge-tray .piece-choice[aria-pressed=true], #erase-slot .piece-choice[aria-pressed=true] { background: var(--piece-selected); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.keyboard-help { margin: .5rem 0; color: var(--secondary); font-size: .78rem; }
+.keyboard-help summary { cursor: pointer; width: fit-content; color: var(--ink); font-weight: 600; }
+.keyboard-help p { margin: .45rem 0; line-height: 1.5; }
+.keyboard-help kbd { padding: .08rem .25rem; border: 1px solid var(--border); border-radius: 4px; background: var(--paper); font: inherit; }

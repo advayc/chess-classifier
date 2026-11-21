@@ -16,15 +16,20 @@ export const DEFAULT_LIMIT: GameLimit = { by: 'games', count: 100 }
 
 export interface ListedGame {
   id: string
-  source: 'lichess' | 'chesscom'
+  source: 'lichess' | 'chesscom' | 'pgn'
   white: string
   black: string
   whiteElo?: number
   blackElo?: number
+  whiteProvisional?: boolean
+  blackProvisional?: boolean
   result: string
+  /** Confirmed by the account history provider. PGNs may only carry rating tags. */
+  ratedStandard?: boolean
   playedAt?: string
   timeControl?: string
   url: string
+  site?: string
   pgn?: string
   /** Half-moves, when already known (pasted PGN). */
   moves?: number
@@ -38,6 +43,22 @@ export interface ImportResult {
   list?: ListedGame[]
   pager?: GamePager
   error?: string
+}
+
+export function listedClockLabel(header?: string, fallback?: string): string {
+  if (header && header !== '-' && header !== '?') {
+    const days = header.match(/^1\/(\d+)$/)
+    if (days) return `${Number(days[1]) / 86_400}d / move`
+    const [baseRaw, incRaw] = header.split('+')
+    const base = Number(baseRaw)
+    const inc = incRaw ? Number(incRaw) : 0
+    if (Number.isFinite(base) && base > 0) {
+      if (base >= 60 && base % 60 === 0) return inc ? `${base / 60}+${inc}` : `${base / 60} min`
+      return inc ? `${base}s+${inc}` : `${base}s`
+    }
+  }
+  if (!fallback) return '—'
+  return fallback === 'ultraBullet' ? 'UltraBullet' : fallback.charAt(0).toUpperCase() + fallback.slice(1)
 }
 
 const DAY = 86_400_000
@@ -213,6 +234,7 @@ function matchesFilter(game: ListedGame, username: string, site: 'lichess' | 'ch
 }
 
 const LICHESS_PAGE = 50
+type LichessPlayer = { user?: { name: string }; rating?: number; provisional?: boolean }
 
 export async function listLichessGames(username: string, until?: string | null, filter?: GameFilter): Promise<{
   list: ListedGame[]
@@ -243,12 +265,14 @@ export async function listLichessGames(username: string, until?: string | null, 
       lastMoveAt?: number
       status: string
       winner?: string
-      players: { white: { user?: { name: string }; rating?: number }; black: { user?: { name: string }; rating?: number } }
+      rated?: boolean
+      variant?: string
+      players: { white: LichessPlayer; black: LichessPlayer }
       speed?: string
       pgn?: string
     }
     const result = game.winner === 'white' ? '1-0' : game.winner === 'black' ? '0-1' :
-      game.status === 'draw' || game.status === 'stalemate' ? '1/2-1/2' : '*'
+      ['draw', 'stalemate', 'outoftime'].includes(game.status) ? '1/2-1/2' : '*'
     list.push({
       id: game.id,
       source: 'lichess',
@@ -256,7 +280,10 @@ export async function listLichessGames(username: string, until?: string | null, 
       black: game.players.black.user?.name || 'Black',
       whiteElo: game.players.white.rating,
       blackElo: game.players.black.rating,
+      whiteProvisional: game.players.white.provisional,
+      blackProvisional: game.players.black.provisional,
       result,
+      ratedStandard: game.rated === true && game.variant === 'standard',
       playedAt: new Date(game.createdAt).toISOString(),
       timeControl: game.speed,
       url: `https://lichess.org/${game.id}`,
@@ -287,13 +314,14 @@ export async function listChessComMonth(archiveUrl: string, username = '', filte
       url: string
       pgn?: string
       end_time: number
+      rated?: boolean
       time_class?: string
       rules?: string
       white: { username: string; rating?: number; result: string }
       black: { username: string; rating?: number; result: string }
     }[]
   }
-  return (data.games || []).filter(game => !game.rules || game.rules === 'chess').reverse().map(game => {
+  return (data.games || []).filter(game => !game.rules || game.rules === 'chess').sort((a, b) => b.end_time - a.end_time).map(game => {
     const id = game.url.match(/\/(\d+)$/)?.[1] || game.url
     const result = chessComResult(game.white.result, game.black.result)
     return {
@@ -304,6 +332,7 @@ export async function listChessComMonth(archiveUrl: string, username = '', filte
       whiteElo: game.white.rating,
       blackElo: game.black.rating,
       result,
+      ratedStandard: game.rated === true && game.rules === 'chess',
       playedAt: new Date(game.end_time * 1000).toISOString(),
       timeControl: game.time_class,
       url: game.url,

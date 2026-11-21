@@ -1,8 +1,35 @@
 import type { EngineInfo } from './types'
 
 const runtimes = {
-  threaded: 'stockfish-19.js',
-  single: 'stockfish-19-single.js',
+  full: { threaded: 'stockfish-19.js', single: 'stockfish-19-single.js' },
+  lite: { threaded: 'stockfish-19-lite.js', single: 'stockfish-19-lite-single.js' },
+}
+const FULL_CACHED = 'quiet-square-stockfish-full'
+let warming = false
+
+/** True once the ~99 MB full network build has finished downloading into the HTTP cache. */
+function fullEngineCached(): boolean {
+  try { return localStorage.getItem(FULL_CACHED) === '1' } catch { return false }
+}
+
+/**
+ * The full build ships a ~99 MB wasm, which makes the first search slow. Start with the ~1.8 MB
+ * lite build, then download the full build in the background so later engine starts use it.
+ */
+function warmFullEngine(runtime: string, threaded: boolean) {
+  if (warming || fullEngineCached()) return
+  const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection
+  if (connection?.saveData) return
+  warming = true
+  const build = threaded ? runtimes.full.threaded : runtimes.full.single
+  const wasm = new URL(build.replace(/\.js$/, '.wasm'), runtime)
+  void Promise.all([fetch(new URL(build, runtime)), fetch(wasm)])
+    .then(responses => Promise.all(responses.map(response => {
+      if (!response.ok) throw new Error(String(response.status))
+      return response.arrayBuffer()
+    })))
+    .then(() => { try { localStorage.setItem(FULL_CACHED, '1') } catch { /* ignore */ } })
+    .catch(() => { warming = false })
 }
 const MOVE = /^[a-h][1-8][a-h][1-8][qrbn]?$/
 
@@ -173,9 +200,10 @@ export class Engine {
 
   #boot() {
     const threaded = this.#threaded
+    const builds = fullEngineCached() ? runtimes.full : runtimes.lite
     let worker: Worker
     try {
-      worker = new Worker(new URL(threaded ? runtimes.threaded : runtimes.single, this.runtime))
+      worker = new Worker(new URL(threaded ? builds.threaded : builds.single, this.runtime))
     } catch {
       const job = this.#job
       this.#job = null
@@ -246,6 +274,7 @@ export class Engine {
     if (line === 'readyok' && !this.#ready) {
       clearTimeout(this.#startup)
       this.#ready = true
+      warmFullEngine(this.runtime, this.#threaded)
       if (!this.#job) return
       if ('kind' in this.#job && this.#job.kind === 'eval') this.#searchEval()
       else this.#searchAnalyze()

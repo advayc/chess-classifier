@@ -1,7 +1,6 @@
 'use client'
 
 import { Chess, DEFAULT_POSITION, type Move } from 'chess.js'
-import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Engine } from '../engine'
 import { uciMove } from '../game'
@@ -13,15 +12,35 @@ import { CLASS_LABEL, CLASS_ORDER, classifyMove, type MoveClass } from '../revie
 import { sideWinChance } from '../review/win-prob'
 import { ClassIcon } from '../review/class-icons'
 import {
+  DEFAULT_LIMIT,
   listedToRecord,
-  listChessComMonth,
-  listLichessGames,
   resolveImport,
   type GameColor,
   type GameFilter,
+  type GameLimit,
+  type GamePager,
   type GameSpeed,
   type ListedGame,
 } from '../review/import-games'
+
+const LIMIT_OPTIONS: Record<GameLimit['by'], { value: string; label: string; limit: GameLimit }[]> = {
+  games: [50, 100, 250, 500].map(count => ({ value: String(count), label: String(count), limit: { by: 'games', count } })),
+  time: [
+    { value: '7', label: 'Week', limit: { by: 'time', days: 7 } },
+    { value: '30', label: 'Month', limit: { by: 'time', days: 30 } },
+    { value: '90', label: '3 months', limit: { by: 'time', days: 90 } },
+    { value: '365', label: 'Year', limit: { by: 'time', days: 365 } },
+  ],
+}
+
+function limitValue(limit: GameLimit): string {
+  return String(limit.by === 'games' ? limit.count : limit.days)
+}
+
+function moreLabel(limit: GameLimit): string {
+  if (limit.by === 'games') return `Load ${limit.count} more`
+  return `Load previous ${LIMIT_OPTIONS.time.find(option => option.limit.by === 'time' && option.limit.days === limit.days)?.label.toLowerCase() ?? `${limit.days} days`}`
+}
 import { ChessBoard, fenAtPly } from './ChessBoard'
 import { lineNotation, replayLine } from '../position'
 import { EvalGraph } from './EvalGraph'
@@ -134,7 +153,7 @@ export function ReviewApp() {
   const engineRef = useRef<Engine | null>(null)
   const liveEngineRef = useRef<Engine | null>(null)
   const importedGames = useRef<GameRecord[]>([])
-  const loadMoreButton = useRef<HTMLButtonElement>(null)
+  const pagerRef = useRef<GamePager | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const boardPanel = useRef<HTMLElement>(null)
   const moveList = useRef<HTMLDivElement>(null)
@@ -148,12 +167,12 @@ export function ReviewApp() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [list, setList] = useState<ListedGame[]>([])
-  const [listNext, setListNext] = useState<string | null>(null)
+  const [limit, setLimit] = useState<GameLimit>(DEFAULT_LIMIT)
+  const [hasMore, setHasMore] = useState(false)
   const [listUser, setListUser] = useState('')
   const [listSource, setListSource] = useState<'pgn' | 'lichess' | 'chesscom'>('pgn')
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(true)
-  const [archives, setArchives] = useState<string[]>([])
   const [parseProgress, setParseProgress] = useState('')
   const [review, setReview] = useState<GameReview | null>(null)
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
@@ -328,8 +347,8 @@ export function ReviewApp() {
     setError('')
     setParseProgress('')
     setList([])
-    setListNext(null)
-    setArchives([])
+    setHasMore(false)
+    pagerRef.current = null
     setOpenKey(null)
     setShowHistory(true)
     setAppliedFilter(filter)
@@ -337,6 +356,8 @@ export function ReviewApp() {
       const result = await resolveImport(text, {
         site: source === 'chesscom' ? 'chesscom' : 'lichess',
         filter,
+        limit,
+        onListProgress: found => setParseProgress(`Loading games… ${found} found`),
         forcePgn: forcePgn || source === 'pgn',
         onProgress: (done, total) => setParseProgress(`Reading game ${done} / ${total}`),
       })
@@ -366,38 +387,17 @@ export function ReviewApp() {
         return
       }
       if (result.list) {
-        if (!result.list.length && !result.archives?.length && !result.next) {
-          setError('No games matched that username and setup.')
-        }
+        const pager = result.pager ?? null
+        pagerRef.current = pager
         setList(result.list)
         setListSource(result.kind === 'chesscom-user' ? 'chesscom' : 'lichess')
-        setArchives(result.archives ?? [])
-        setListNext(result.next ?? null)
-        const entered = text.trim()
-        const fromProfile = entered.match(/chess\.com\/(?:member|play|profile)\/([A-Za-z0-9_-]+)/i)?.[1]
-          || entered.match(/lichess\.org\/@\/([^/?#]+)/i)?.[1]
-        const username = (fromProfile || entered).replace(/^@/, '')
-        setListUser(username)
-        let next = result.next ?? null
-        const remaining = [...(result.archives ?? [])]
-        let count = result.list.length
-        while (next || remaining.length) {
-          setParseProgress(`Loading games… ${count} found`)
-          if (result.kind === 'chesscom-user') {
-            const more = await listChessComMonth(remaining[0], username, filter)
-            remaining.shift()
-            setArchives([...remaining])
-            count += more.length
-            setList(current => [...current, ...more])
-          } else {
-            const page = await listLichessGames(username, next, filter)
-            next = page.next
-            setListNext(next)
-            count += page.list.length
-            setList(current => [...current, ...page.list])
-          }
+        setListUser(pager?.username ?? '')
+        setHasMore(pager?.hasMore ?? false)
+        if (!result.list.length) {
+          setError(pager?.hasMore && limit.by === 'time'
+            ? 'No games in that time range. Load an earlier range or pick a longer one.'
+            : 'No games matched that username and setup.')
         }
-        if (!count) setError('No games matched that username and setup.')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.')
@@ -416,39 +416,22 @@ export function ReviewApp() {
   }
 
   const loadMore = useCallback(async () => {
-    if (busy || (!listNext && !archives.length)) return
+    const pager = pagerRef.current
+    if (busy || !pager?.hasMore) return
     setBusy(true)
+    setError('')
+    setParseProgress('')
     try {
-      if (listSource === 'lichess') {
-        const { list: more, next } = await listLichessGames(listUser, listNext, appliedFilter)
-        setList(current => [...current, ...more])
-        setListNext(next)
-      } else {
-        const remaining = [...archives]
-        let more: ListedGame[] = []
-        while (!more.length && remaining.length) more = await listChessComMonth(remaining.shift()!, listUser, appliedFilter)
-        setList(current => [...current, ...more])
-        setArchives(remaining)
-      }
+      const more = await pager.next(found => setParseProgress(`Loading games… ${found} found`))
+      setList(current => [...current, ...more])
+      if (!more.length) setError('No older games found.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load more games.')
     } finally {
+      setHasMore(pager.hasMore)
       setBusy(false)
     }
-  }, [appliedFilter, archives, busy, listNext, listSource, listUser])
-
-  useEffect(() => {
-    const button = loadMoreButton.current
-    if (!button || busy || error) return
-    const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        observer.disconnect()
-        void loadMore()
-      }
-    }, { root: button.closest('.game-browser') })
-    observer.observe(button)
-    return () => observer.disconnect()
-  }, [busy, error, loadMore])
+  }, [busy])
 
   async function openListed(item: ListedGame) {
     if (busy) return
@@ -758,6 +741,21 @@ export function ReviewApp() {
                         ]}
                       />
                       <ChoiceRow
+                        label="Limit by"
+                        value={limit.by}
+                        onChange={by => setLimit(by === limit.by ? limit : by === 'games' ? DEFAULT_LIMIT : LIMIT_OPTIONS.time[1].limit)}
+                        options={[
+                          { value: 'games', label: 'Games' },
+                          { value: 'time', label: 'Time' },
+                        ]}
+                      />
+                      <ChoiceRow
+                        label={limit.by === 'games' ? 'Last games' : 'Last'}
+                        value={limitValue(limit)}
+                        onChange={value => setLimit(LIMIT_OPTIONS[limit.by].find(option => option.value === value)!.limit)}
+                        options={LIMIT_OPTIONS[limit.by].map(({ value, label }) => ({ value, label }))}
+                      />
+                      <ChoiceRow
                         label="Played as"
                         value={color}
                         onChange={setColor}
@@ -824,8 +822,10 @@ export function ReviewApp() {
                   )
                 })}
               </div>
-              {listNext || archives.length ? (
-                <button ref={loadMoreButton} type="button" className="text-button history-more" onClick={loadMore} disabled={busy}>Load more</button>
+              {hasMore && pagerRef.current ? (
+                <button type="button" className="text-button history-more" onClick={loadMore} disabled={busy}>
+                  {busy && parseProgress ? parseProgress : moreLabel(pagerRef.current.limit)}
+                </button>
               ) : null}
             </section>
           ) : null}
@@ -1036,7 +1036,7 @@ export function ReviewApp() {
 
       <footer className="site-footer">
         <span>Full-game Stockfish review in your browser.</span>
-        <Link href="/licenses.html">Open-source credits</Link>
+        <a href="/licenses.html">Open-source credits</a>
       </footer>
     </div>
   )

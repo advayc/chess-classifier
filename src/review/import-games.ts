@@ -10,6 +10,10 @@ export interface GameFilter {
   color: GameColor
 }
 
+/** How much history to load at once: a number of recent games, or a window of days. */
+export type GameLimit = { by: 'games'; count: number } | { by: 'time'; days: number }
+export const DEFAULT_LIMIT: GameLimit = { by: 'games', count: 100 }
+
 export interface ListedGame {
   id: string
   source: 'lichess' | 'chesscom'
@@ -30,9 +34,80 @@ export interface ImportResult {
   kind: ImportKind
   games?: GameRecord[]
   list?: ListedGame[]
-  next?: string | null
-  archives?: string[]
+  pager?: GamePager
   error?: string
+}
+
+const DAY = 86_400_000
+
+/**
+ * Pages through a player's history newest-first without downloading all of it.
+ * Chess.com serves whole months, so extra games from a month wait in a buffer for the next page.
+ */
+export class GamePager {
+  readonly username: string
+  readonly limit: GameLimit
+  #site: 'lichess' | 'chesscom'
+  #filter?: GameFilter
+  #buffer: ListedGame[] = []
+  #archives: string[] | null = null
+  #lichessNext: string | null = null
+  #exhausted = false
+  #cutoff = Date.now()
+  #pages = 0
+
+  constructor(site: 'lichess' | 'chesscom', username: string, limit: GameLimit, filter?: GameFilter) {
+    this.#site = site
+    this.username = username
+    this.limit = limit
+    this.#filter = filter
+  }
+
+  get hasMore(): boolean {
+    return this.#buffer.length > 0 || !this.#exhausted
+  }
+
+  /** Next page: `count` games, or the next `days` window. Later windows skip empty stretches. */
+  async next(onProgress?: (found: number) => void): Promise<ListedGame[]> {
+    this.#pages += 1
+    if (this.limit.by === 'games') {
+      while (this.#buffer.length < this.limit.count && !this.#exhausted) {
+        await this.#fetch()
+        onProgress?.(this.#buffer.length)
+      }
+      return this.#buffer.splice(0, this.limit.count)
+    }
+    const first = this.#pages === 1
+    let page: ListedGame[] = []
+    do {
+      this.#cutoff -= this.limit.days * DAY
+      while (!this.#exhausted && (!this.#buffer.length || playedAt(this.#buffer.at(-1)!) >= this.#cutoff)) {
+        await this.#fetch()
+        onProgress?.(this.#buffer.length)
+      }
+      const split = this.#buffer.findIndex(game => playedAt(game) < this.#cutoff)
+      page = this.#buffer.splice(0, split < 0 ? this.#buffer.length : split)
+    } while (!first && !page.length && this.hasMore)
+    return page
+  }
+
+  async #fetch() {
+    if (this.#site === 'lichess') {
+      const { list, next } = await listLichessGames(this.username, this.#lichessNext, this.#filter)
+      this.#buffer.push(...list)
+      this.#lichessNext = next
+      if (!next) this.#exhausted = true
+      return
+    }
+    this.#archives ??= await listChessComArchives(this.username)
+    const archive = this.#archives.shift()
+    if (archive) this.#buffer.push(...await listChessComMonth(archive, this.username, this.#filter))
+    if (!this.#archives.length) this.#exhausted = true
+  }
+}
+
+function playedAt(game: ListedGame): number {
+  return game.playedAt ? Date.parse(game.playedAt) : 0
 }
 
 const LICHESS_GAME = /^(?:https?:\/\/)?(?:www\.)?lichess\.org\/(?:embed\/)?([a-zA-Z0-9]{8,12})(?:[/#?]|$)/i
@@ -126,12 +201,14 @@ function matchesFilter(game: ListedGame, username: string, site: 'lichess' | 'ch
   return played.toLowerCase() === username.toLowerCase()
 }
 
+const LICHESS_PAGE = 50
+
 export async function listLichessGames(username: string, until?: string | null, filter?: GameFilter): Promise<{
   list: ListedGame[]
   next: string | null
 }> {
   const params = new URLSearchParams({
-    max: '20',
+    max: String(LICHESS_PAGE),
     pgnInJson: 'true',
     clocks: 'false',
     evals: 'false',
@@ -175,7 +252,7 @@ export async function listLichessGames(username: string, until?: string | null, 
     })
     oldest = oldest === null ? game.createdAt : Math.min(oldest, game.createdAt)
   }
-  return { list, next: list.length >= 20 && oldest ? String(oldest - 1) : null }
+  return { list, next: list.length >= LICHESS_PAGE && oldest ? String(oldest - 1) : null }
 }
 
 export async function listChessComArchives(username: string): Promise<string[]> {
@@ -237,7 +314,9 @@ export async function resolveImport(
     site?: 'lichess' | 'chesscom'
     filter?: GameFilter
     forcePgn?: boolean
+    limit?: GameLimit
     onProgress?: (done: number, total: number) => void
+    onListProgress?: (found: number) => void
   } = {},
 ): Promise<ImportResult> {
   if (options.forcePgn) {
@@ -267,19 +346,9 @@ export async function resolveImport(
     }
     if (detected.kind === 'lichess-user' || detected.kind === 'chesscom-user') {
       const site = detected.kind === 'chesscom-user' ? 'chesscom' : options.site || 'lichess'
-      if (site === 'chesscom') {
-        const archives = await listChessComArchives(detected.value)
-        if (!archives.length) return { kind: 'chesscom-user', list: [], next: null }
-        let list: ListedGame[] = []
-        while (!list.length && archives.length) list = await listChessComMonth(archives.shift()!, detected.value, options.filter)
-        return {
-          kind: 'chesscom-user',
-          list,
-          archives,
-        }
-      }
-      const { list, next } = await listLichessGames(detected.value, null, options.filter)
-      return { kind: 'lichess-user', list, next }
+      const pager = new GamePager(site, detected.value, options.limit ?? DEFAULT_LIMIT, options.filter)
+      const list = await pager.next(options.onListProgress)
+      return { kind: site === 'chesscom' ? 'chesscom-user' : 'lichess-user', list, pager }
     }
   } catch (error) {
     return {

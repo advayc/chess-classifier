@@ -8,6 +8,7 @@
       try {
         const theme = localStorage.getItem('quiet-square-theme')
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+        if (new URLSearchParams(location.search).get('embed') === '1') document.documentElement.classList.add('embed')
       } catch {}
     </script>
     <meta name="description" content="Find the next chess move from a screenshot, FEN, PGN, or custom board with Stockfish." />
@@ -259,5 +260,22 @@
     </main>
 
     <script type="module" src="/runtime/position-app.js"></script>
+    <script>
+      if (document.documentElement.classList.contains('embed')) {
+        const send = () => parent.postMessage(
+          { source: 'position-frame', height: document.documentElement.scrollHeight },
+          location.origin,
+        )
+        addEventListener('message', event => {
+          if (event.origin !== location.origin || event.data?.source !== 'chess-shell') return
+          const theme = event.data.theme
+          if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
+          if (event.data.measure) send()
+        })
+        addEventListener('load', send)
+        new ResizeObserver(send).observe(document.body)
+        send()
+      }
+    </script>
   </body>
 </html>

@@ -2,6 +2,13 @@ import { checkPgnSource, parsePgn } from '../pgn-client'
 import type { GameRecord } from '../types'
 
 export type ImportKind = 'pgn' | 'lichess-game' | 'chesscom-game' | 'lichess-user' | 'chesscom-user'
+export type GameSpeed = 'all' | 'bullet' | 'blitz' | 'rapid' | 'classical'
+export type GameColor = 'either' | 'white' | 'black'
+
+export interface GameFilter {
+  speed: GameSpeed
+  color: GameColor
+}
 
 export interface ListedGame {
   id: string
@@ -101,7 +108,19 @@ export async function fetchChessComGame(path: string): Promise<GameRecord> {
   throw new Error('Chess.com returned no PGN. Paste the PGN from the game share menu instead.')
 }
 
-export async function listLichessGames(username: string, until?: string | null): Promise<{
+function matchesFilter(game: ListedGame, username: string, site: 'lichess' | 'chesscom', filter?: GameFilter): boolean {
+  if (!filter || filter.speed === 'all' && filter.color === 'either') return true
+  const pace = (game.timeControl || '').toLowerCase()
+  if (filter.speed !== 'all') {
+    const expected = filter.speed === 'classical' && site === 'chesscom' ? ['daily', 'classical'] : [filter.speed]
+    if (!expected.includes(pace)) return false
+  }
+  if (filter.color === 'either') return true
+  const played = filter.color === 'white' ? game.white : game.black
+  return played.toLowerCase() === username.toLowerCase()
+}
+
+export async function listLichessGames(username: string, until?: string | null, filter?: GameFilter): Promise<{
   list: ListedGame[]
   next: string | null
 }> {
@@ -113,6 +132,8 @@ export async function listLichessGames(username: string, until?: string | null):
     opening: 'false',
   })
   if (until) params.set('until', until)
+  if (filter?.speed && filter.speed !== 'all') params.set('perfType', filter.speed)
+  if (filter?.color === 'white' || filter?.color === 'black') params.set('color', filter.color)
   const response = await fetch(`https://lichess.org/api/games/user/${encodeURIComponent(username)}?${params}`, {
     headers: { Accept: 'application/x-ndjson' },
   })
@@ -158,7 +179,7 @@ export async function listChessComArchives(username: string): Promise<string[]> 
   return [...(data.archives || [])].reverse()
 }
 
-export async function listChessComMonth(archiveUrl: string): Promise<ListedGame[]> {
+export async function listChessComMonth(archiveUrl: string, username = '', filter?: GameFilter): Promise<ListedGame[]> {
   const archive = new URL(archiveUrl)
   if (archive.origin !== 'https://api.chess.com' || !/^\/pub\/player\/[^/]+\/games\/\d{4}\/\d{2}$/.test(archive.pathname)) {
     throw new Error('Chess.com returned an invalid archive address.')
@@ -192,7 +213,7 @@ export async function listChessComMonth(archiveUrl: string): Promise<ListedGame[
       url: game.url,
       pgn: game.pgn,
     }
-  })
+  }).filter(game => matchesFilter(game, username, 'chesscom', filter))
 }
 
 function chessComResult(white: string, black: string): string {
@@ -206,8 +227,24 @@ function chessComResult(white: string, black: string): string {
 
 export async function resolveImport(
   raw: string,
-  options: { site?: 'lichess' | 'chesscom'; onProgress?: (done: number, total: number) => void } = {},
+  options: {
+    site?: 'lichess' | 'chesscom'
+    filter?: GameFilter
+    forcePgn?: boolean
+    onProgress?: (done: number, total: number) => void
+  } = {},
 ): Promise<ImportResult> {
+  if (options.forcePgn) {
+    const text = raw.trim()
+    if (!text) return { kind: 'pgn', error: 'Paste a PGN.' }
+    try {
+      const { games } = await parsePgnText(text, options.onProgress)
+      return { kind: 'pgn', games }
+    } catch (error) {
+      return { kind: 'pgn', error: error instanceof Error ? error.message : 'Could not read the PGN.' }
+    }
+  }
+
   const detected = detectImport(raw)
   if ('error' in detected) return { kind: 'pgn', error: detected.error }
 
@@ -228,14 +265,14 @@ export async function resolveImport(
         const archives = await listChessComArchives(detected.value)
         if (!archives.length) return { kind: 'chesscom-user', list: [], next: null }
         let list: ListedGame[] = []
-        while (!list.length && archives.length) list = await listChessComMonth(archives.shift()!)
+        while (!list.length && archives.length) list = await listChessComMonth(archives.shift()!, detected.value, options.filter)
         return {
           kind: 'chesscom-user',
           list,
           archives,
         }
       }
-      const { list, next } = await listLichessGames(detected.value)
+      const { list, next } = await listLichessGames(detected.value, null, options.filter)
       return { kind: 'lichess-user', list, next }
     }
   } catch (error) {

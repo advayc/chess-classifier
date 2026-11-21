@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import '@fontsource-variable/instrument-sans/wght.css'
 import './globals.css'
+import { AppShell } from '../components/AppShell'
 
 export const metadata: Metadata = {
   title: 'Chess Engine · Game review',
@@ -19,7 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <meta name="color-scheme" content="dark light" />
       </head>
-      <body>{children}</body>
+      <body><AppShell />{children}</body>
     </html>
   )
 }

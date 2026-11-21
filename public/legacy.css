@@ -694,3 +694,8 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
 }
+
+html.embed .page-heading,
+html.embed .skip-link { display: none; }
+html.embed body { background: transparent; }
+html.embed .page { max-width: none; margin: 0; padding: 0 0 1.25rem; }

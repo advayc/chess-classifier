@@ -17,40 +17,59 @@ import {
   listChessComMonth,
   listLichessGames,
   resolveImport,
+  type GameColor,
+  type GameFilter,
+  type GameSpeed,
   type ListedGame,
 } from '../review/import-games'
 import { ChessBoard, fenAtPly } from './ChessBoard'
 import { lineNotation, replayLine } from '../position'
 import { EvalGraph } from './EvalGraph'
 
-type Theme = 'light' | 'dark'
 type VariationMove = { from: string; to: string; uci: string; san: string; lines: EngineInfo[] }
+type ImportSource = 'lichess' | 'chesscom' | 'pgn' | 'file'
 
-function useTheme() {
-  const [theme, setTheme] = useState<Theme>('dark')
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem('quiet-square-theme')
-      if (stored === 'light' || stored === 'dark') setTheme(stored)
-    } catch { /* ignore */ }
-  }, [])
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    try { localStorage.setItem('quiet-square-theme', theme) } catch { /* ignore */ }
-  }, [theme])
-  return { theme, toggle: () => setTheme(theme === 'dark' ? 'light' : 'dark') }
+function ChoiceRow<T extends string>({ label, value, options, onChange }: {
+  label: string
+  value: T
+  options: { value: T; label: string; icon?: string }[]
+  onChange: (value: T) => void
+}) {
+  const groupId = `import-${label.toLowerCase().replace(/\s+/g, '-')}`
+  return (
+    <div className="choice-setup">
+      <span className="choice-label" id={groupId}>{label}</span>
+      <div className="choice-row" role="group" aria-labelledby={groupId}>
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            className="choice-button"
+            aria-pressed={value === option.value}
+            onClick={() => onChange(option.value)}
+          >
+            {option.icon ? <img src={option.icon} alt="" width={16} height={16} /> : null}
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export function ReviewApp() {
-  const { theme, toggle } = useTheme()
   const engineRef = useRef<Engine | null>(null)
   const liveEngineRef = useRef<Engine | null>(null)
   const importedGames = useRef<GameRecord[]>([])
   const loadMoreButton = useRef<HTMLButtonElement>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const cancelRef = useRef({ cancelled: false })
 
   const [query, setQuery] = useState('')
-  const [site, setSite] = useState<'lichess' | 'chesscom'>('lichess')
+  const [source, setSource] = useState<ImportSource>('lichess')
+  const [speed, setSpeed] = useState<GameSpeed>('all')
+  const [color, setColor] = useState<GameColor>('either')
+  const [appliedFilter, setAppliedFilter] = useState<GameFilter>({ speed: 'all', color: 'either' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [list, setList] = useState<ListedGame[]>([])
@@ -196,16 +215,22 @@ export function ReviewApp() {
     }
   }, [])
 
-  async function onImport(event: React.FormEvent) {
-    event.preventDefault()
+  async function runImport(text: string, forcePgn = false) {
+    const filter = { speed, color }
     setBusy(true)
     setError('')
     setParseProgress('')
     setList([])
     setListNext(null)
     setArchives([])
+    setAppliedFilter(filter)
     try {
-      const result = await resolveImport(query, { site, onProgress: (done, total) => setParseProgress(`Reading game ${done} / ${total}`) })
+      const result = await resolveImport(text, {
+        site: source === 'chesscom' ? 'chesscom' : 'lichess',
+        filter,
+        forcePgn: forcePgn || source === 'pgn',
+        onProgress: (done, total) => setParseProgress(`Reading game ${done} / ${total}`),
+      })
       if (result.error) {
         setError(result.error)
         return
@@ -231,12 +256,14 @@ export function ReviewApp() {
         return
       }
       if (result.list) {
-        if (!result.list.length) setError('No standard games were found for this username.')
+        if (!result.list.length && !result.archives?.length && !result.next) {
+          setError('No games matched that username and setup.')
+        }
         setList(result.list)
         setListSource(result.kind === 'chesscom-user' ? 'chesscom' : 'lichess')
         setArchives(result.archives ?? [])
         setListNext(result.next ?? null)
-        setListUser(query.trim())
+        setListUser(text.trim())
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed.')
@@ -245,18 +272,27 @@ export function ReviewApp() {
     }
   }
 
+  function onImport(event: React.FormEvent) {
+    event.preventDefault()
+    if (source === 'file') {
+      fileInput.current?.click()
+      return
+    }
+    void runImport(query)
+  }
+
   const loadMore = useCallback(async () => {
     if (busy || (!listNext && !archives.length)) return
     setBusy(true)
     try {
       if (listSource === 'lichess') {
-        const { list: more, next } = await listLichessGames(listUser, listNext)
+        const { list: more, next } = await listLichessGames(listUser, listNext, appliedFilter)
         setList(current => [...current, ...more])
         setListNext(next)
       } else {
         const remaining = [...archives]
         let more: ListedGame[] = []
-        while (!more.length && remaining.length) more = await listChessComMonth(remaining.shift()!)
+        while (!more.length && remaining.length) more = await listChessComMonth(remaining.shift()!, listUser, appliedFilter)
         setList(current => [...current, ...more])
         setArchives(remaining)
       }
@@ -265,7 +301,7 @@ export function ReviewApp() {
     } finally {
       setBusy(false)
     }
-  }, [archives, busy, listNext, listSource, listUser])
+  }, [appliedFilter, archives, busy, listNext, listSource, listUser])
 
   useEffect(() => {
     const button = loadMoreButton.current
@@ -377,25 +413,7 @@ export function ReviewApp() {
   const originPly = variation?.from ?? 0
 
   return (
-    <main className="page review-page">
-      <div className="page-heading">
-        <div className="brand-row">
-          <h1 className="page-title">Chess Engine</h1>
-          <nav className="mode-nav" aria-label="App mode">
-            <span className="mode-current">Review</span>
-            <Link href="/position" className="mode-link">Position</Link>
-          </nav>
-        </div>
-        <button
-          className="icon-button"
-          type="button"
-          title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          onClick={toggle}
-          dangerouslySetInnerHTML={{ __html: icon(theme === 'dark' ? 'sun' : 'moon') }}
-        />
-      </div>
-
+    <div className="review-page">
       <div className="workspace review-workspace">
         <section className="board-panel" aria-labelledby="board-heading" onKeyDown={event => {
           const keys: Record<string, number> = { ArrowLeft: ply - 1, ArrowRight: ply + 1, Home: originPly, End: maxPly }
@@ -478,46 +496,97 @@ export function ReviewApp() {
           <section className="panel">
             <h2>Load a game</h2>
             <form className="source-form" onSubmit={onImport}>
-              <label htmlFor="review-import">Chess.com / Lichess URL, username, or PGN</label>
-              <textarea
-                id="review-import"
-                rows={3}
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="https://lichess.org/… · username · paste PGN"
-                spellCheck={false}
+              <ChoiceRow
+                label="Import from"
+                value={source}
+                onChange={setSource}
+                options={[
+                  { value: 'lichess', label: 'Lichess', icon: '/runtime/lichess.svg' },
+                  { value: 'chesscom', label: 'Chess.com', icon: '/runtime/chessdotcom.svg' },
+                  { value: 'pgn', label: 'PGN' },
+                  { value: 'file', label: 'File' },
+                ]}
               />
-              <div className="source-actions site-toggle">
-                <label className="site-option">
-                  <input type="radio" name="site" checked={site === 'lichess'} onChange={() => setSite('lichess')} />
-                  <img src="/runtime/lichess.svg" alt="" width={16} height={16} /> Lichess user
-                </label>
-                <label className="site-option">
-                  <input type="radio" name="site" checked={site === 'chesscom'} onChange={() => setSite('chesscom')} />
-                  <img src="/runtime/chessdotcom.svg" alt="" width={16} height={16} /> Chess.com user
-                </label>
-              </div>
-              <div className="source-actions">
-                <button type="submit" className="primary-button" disabled={busy}>
-                  {busy && progress ? `Analyzed ${progress.done} / ${progress.total}` : busy ? parseProgress || 'Loading…' : 'Import & review'}
+              {source === 'file' ? (
+                <button type="button" className="primary-button" disabled={busy} onClick={() => fileInput.current?.click()}>
+                  {busy ? parseProgress || 'Loading…' : 'Choose PGN file'}
                 </button>
-                {busy && progress ? (
-                  <button type="button" className="text-button" onClick={cancelReview}>Cancel</button>
-                ) : null}
-                <label className="text-button file-label">
-                  PGN file
-                  <input
-                    type="file"
-                    accept=".pgn,.txt,application/x-chess-pgn,text/plain"
-                    hidden
-                    onChange={async event => {
-                      const file = event.target.files?.[0]
-                      if (!file) return
-                      setQuery(await file.text())
-                    }}
-                  />
-                </label>
-              </div>
+              ) : (
+                <>
+                  <label htmlFor="review-import">
+                    {source === 'pgn' ? 'PGN' : source === 'lichess' ? 'Lichess username or game URL' : 'Chess.com username or game URL'}
+                  </label>
+                  {source === 'pgn' ? (
+                    <textarea
+                      id="review-import"
+                      rows={4}
+                      value={query}
+                      onChange={event => setQuery(event.target.value)}
+                      placeholder="Paste one or more games"
+                      spellCheck={false}
+                    />
+                  ) : (
+                    <input
+                      id="review-import"
+                      type="text"
+                      value={query}
+                      onChange={event => setQuery(event.target.value)}
+                      placeholder={source === 'lichess' ? 'username or https://lichess.org/…' : 'username or https://www.chess.com/game/…'}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  )}
+                  {source === 'pgn' ? null : (
+                    <>
+                      <ChoiceRow
+                        label="Speed"
+                        value={speed}
+                        onChange={setSpeed}
+                        options={[
+                          { value: 'all', label: 'All' },
+                          { value: 'bullet', label: 'Bullet' },
+                          { value: 'blitz', label: 'Blitz' },
+                          { value: 'rapid', label: 'Rapid' },
+                          { value: 'classical', label: 'Classical' },
+                        ]}
+                      />
+                      <ChoiceRow
+                        label="Played as"
+                        value={color}
+                        onChange={setColor}
+                        options={[
+                          { value: 'either', label: 'Either' },
+                          { value: 'white', label: 'White' },
+                          { value: 'black', label: 'Black' },
+                        ]}
+                      />
+                    </>
+                  )}
+                  <div className="source-actions">
+                    <button type="submit" className="primary-button" disabled={busy || !query.trim()}>
+                      {busy && progress ? `Analyzed ${progress.done} / ${progress.total}` : busy ? parseProgress || 'Loading…' : source === 'pgn' ? 'Review PGN' : 'Load games'}
+                    </button>
+                    {busy && progress ? (
+                      <button type="button" className="text-button" onClick={cancelReview}>Cancel</button>
+                    ) : null}
+                  </div>
+                </>
+              )}
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".pgn,.txt,application/x-chess-pgn,text/plain"
+                hidden
+                onChange={event => {
+                  const file = event.target.files?.[0]
+                  event.target.value = ''
+                  if (!file) return
+                  void file.text().then(text => {
+                    setQuery(text)
+                    return runImport(text, true)
+                  })
+                }}
+              />
               {error ? <p className="inline-message error" role="alert">{error}</p> : null}
             </form>
           </section>
@@ -681,6 +750,6 @@ export function ReviewApp() {
         <span>Full-game Stockfish review in your browser.</span>
         <Link href="/licenses.html">Open-source credits</Link>
       </footer>
-    </main>
+    </div>
   )
 }

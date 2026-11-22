@@ -1044,9 +1044,9 @@ function finishScan(error?: string, result?: ScanResult) {
   }
   state.orientation = result.orientation
   state.uncertain = new Set(result.uncertain)
-  setPosition({
-    squares: fromPlacement(result.placement), turn: 'w', castling: '-', ep: '-', halfmove: '0', fullmove: '1',
-  }, 'screenshot')
+  const squares = fromPlacement(result.placement)
+  const castling = Object.keys(CASTLING).filter(right => canCastle(squares, right)).join('') || '-'
+  setPosition({ squares, turn: 'w', castling, ep: '-', halfmove: '0', fullmove: '1' }, 'screenshot')
   detectionView.show(state.screenshotUrl, result.detection, result.orientation)
   $<HTMLInputElement>('fen-input').value = ''
   showMessage($('fen-message'))

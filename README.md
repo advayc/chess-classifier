@@ -27,7 +27,7 @@ In **Position**, a board screenshot is read in a browser worker before Stockfish
 2. **Find the board** — [@scoriiu/fenshot](https://www.npmjs.com/package/@scoriiu/fenshot) locates the 8×8 grid in that grayscale image and returns the corner bounds of the board.
 3. **Classify each square** — The board is split into 64 tiles. Each tile is scored by the bundled ONNX model `chess-tiles-v2` through onnxruntime-web (WASM, one thread). Softmax outputs become a piece letter or empty for every square.
 4. **Orient and check confidence** — The placement is rotated so White is at the bottom when the kings make that orientation plausible. Squares below the confidence floor are marked uncertain so you can correct them. If auto-find is weak but you cropped tightly, the worker classifies the crop as the full board when it still has exactly one white and one black king.
-5. **Hand off a position** — The resulting placement becomes the interactive board. Castling and en passant rights start empty for screenshot imports; you set **side to move**, fix any uncertain squares, then run analysis. Only then does Stockfish search that FEN.
+5. **Hand off a position** — The resulting placement becomes the interactive board. Castling rights are inferred from the king and rook positions, while en passant starts empty. Check castling rights, set **side to move**, and fix any uncertain squares before analysis.
 
 Identical tile pixels usually classify the same way because the model runs on a single WASM thread. Board finding and image scaling can still differ slightly across browsers. Prefer a clear, full 2D board shot; crop close to all 64 squares if auto-find fails.
 

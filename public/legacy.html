@@ -234,19 +234,19 @@
                 <label><input type="radio" name="turn" value="b" /><span><i class="black-side"></i> Black</span></label>
               </div>
             </fieldset>
+            <fieldset class="castling castling-quick">
+              <legend>Castling rights</legend>
+              <div class="castling-options">
+                <label><input type="checkbox" value="K" /> White O-O</label>
+                <label><input type="checkbox" value="Q" /> White O-O-O</label>
+                <label><input type="checkbox" value="k" /> Black O-O</label>
+                <label><input type="checkbox" value="q" /> Black O-O-O</label>
+              </div>
+              <p id="import-note" hidden>Screenshot castling rights are inferred from piece positions. Adjust them if a king or rook has moved.</p>
+            </fieldset>
             <details id="position-details" class="position-details">
               <summary>Position details <span data-icon="chevron-down"></span></summary>
               <div class="detail-content">
-                <p id="import-note" hidden>A screenshot leaves some game history unknown. Set the fields below if you know them.</p>
-                <fieldset class="castling">
-                  <legend>Castling rights</legend>
-                  <div class="castling-options">
-                    <label><input type="checkbox" value="K" /> White O-O</label>
-                    <label><input type="checkbox" value="Q" /> White O-O-O</label>
-                    <label><input type="checkbox" value="k" /> Black O-O</label>
-                    <label><input type="checkbox" value="q" /> Black O-O-O</label>
-                  </div>
-                </fieldset>
                 <div class="state-fields">
                   <label>En passant<input id="ep" type="text" maxlength="2" placeholder="e.g. e6" autocomplete="off" spellcheck="false" /></label>
                   <label>Halfmove<input id="halfmove" type="number" min="0" max="9999" /></label>

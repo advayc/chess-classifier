@@ -264,6 +264,8 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 .detail-content { padding: .8rem 0 .1rem; border-top: 1px solid var(--border); }
 #import-note { font-size: .84rem; line-height: 1.4; color: var(--secondary); margin-bottom: .85rem; }
 .castling-options { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem .45rem; }
+.castling-quick { margin-top: .85rem; }
+.castling-quick #import-note { margin: .55rem 0 0; }
 .castling-options label { font-size: .81rem; display: flex; align-items: center; gap: .35rem; }
 .castling-options label:has(:disabled) { color: var(--secondary); }
 .castling-options input { margin: 0; accent-color: var(--accent); width: 1rem; height: 1rem; }

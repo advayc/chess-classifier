@@ -1,9 +1,12 @@
 import { CONFIDENCE_FLOOR, extractTiles, probsToPlacement, recognizeGray, resolveOrientation, rgbaToGray } from '@scoriiu/fenshot'
 import * as ort from 'onnxruntime-web/wasm'
+import type { ScanRequest, VisionRequest, VisionResponse } from './screenshot'
 
 let sessionPromise: Promise<ort.InferenceSession> | null = null
+const runtime = new URL('./', self.location.href)
+const post = (message: VisionResponse) => self.postMessage(message)
 
-function loadModel(runtime: string): Promise<ort.InferenceSession> {
+function loadModel(): Promise<ort.InferenceSession> {
   if (!sessionPromise) {
     ort.env.wasm.numThreads = 1
     ort.env.wasm.wasmPaths = {
@@ -42,21 +45,40 @@ function toGray(bitmap: ImageBitmap, crop?: Crop | null) {
   }
 }
 
-interface ScanRequest { id: number; file: File; crop?: Crop | null; runtime: string }
+let pending: ScanRequest | null = null
+let latestId: number | null = null
+let reading = false
+let cachedImage: { sourceId: number; bitmap: ImageBitmap } | null = null
 
-self.onmessage = async ({ data: { id, file, crop, runtime } }: MessageEvent<ScanRequest>) => {
-  const status = (label: string, value: number) => self.postMessage({ id, label, value })
-  let bitmap: ImageBitmap | null = null
+function clearImage() {
+  cachedImage?.bitmap.close()
+  cachedImage = null
+}
+
+async function readScreenshot({ id, sourceId, file, crop }: ScanRequest) {
+  const current = () => id === latestId
+  const status = (label: string, value: number) => post({ type: 'progress', id, label, value })
+  const model = loadModel().catch(() => null)
+  let uncachedBitmap: ImageBitmap | null = null
   try {
-    status('Opening screenshot', 1)
-    try {
-      bitmap = await createImageBitmap(file)
-    } catch {
-      throw new Error('This image could not be opened. Try a PNG, JPEG, or WebP screenshot.')
+    let bitmap = cachedImage?.sourceId === sourceId ? cachedImage.bitmap : null
+    if (!bitmap) {
+      clearImage()
+      try {
+        bitmap = await createImageBitmap(file)
+        uncachedBitmap = bitmap
+      } catch {
+        throw new Error('This image could not be opened. Try a PNG, JPEG, or WebP screenshot.')
+      }
+      if (!current()) return
+      if (bitmap.width * bitmap.height <= 12_000_000) {
+        cachedImage = { sourceId, bitmap }
+        uncachedBitmap = null
+      }
     }
     const { gray, source, region } = toGray(bitmap, crop)
-    bitmap.close()
-    bitmap = null
+    uncachedBitmap?.close()
+    uncachedBitmap = null
 
     status('Finding the board', 2)
     let announced = false
@@ -65,10 +87,9 @@ self.onmessage = async ({ data: { id, file, crop, runtime } }: MessageEvent<Scan
         status('Reading pieces', 3)
         announced = true
       }
-      let session: ort.InferenceSession
-      try {
-        session = await loadModel(runtime)
-      } catch {
+      const session = await model
+      if (!current()) throw new Error('Scan superseded')
+      if (!session) {
         throw new Error('The vision model could not start. Try scanning again or enter the position as FEN.')
       }
       const tiles = extractTiles(gray, corners)
@@ -76,6 +97,7 @@ self.onmessage = async ({ data: { id, file, crop, runtime } }: MessageEvent<Scan
       return probsToPlacement(output.probs.data as Float32Array)
     }
     let scan = await recognizeGray(gray, classify)
+    if (!current()) return
     if ((!scan || !scan.reliable) && crop) {
       const corners = { x0: 0, y0: 0, x1: gray.width, y1: gray.height }
       const cropRead = await classify(corners)
@@ -105,10 +127,34 @@ self.onmessage = async ({ data: { id, file, crop, runtime } }: MessageEvent<Scan
       width: (x1 - x0) * scaleX, height: (y1 - y0) * scaleY,
     }
     const detection = { source, bounds, placement: scan.placement, tiles }
-    self.postMessage({ id, result: { placement, orientation, uncertain, reliable: scan.reliable, detection } })
+    if (current()) post({ type: 'result', id, result: { placement, orientation, uncertain, reliable: scan.reliable, detection } })
   } catch (error) {
-    self.postMessage({ id, error: (error as Error).message || 'Couldn’t read this screenshot.' })
+    if (current()) post({ type: 'error', id, message: (error as Error).message || 'Couldn’t read this screenshot.' })
   } finally {
-    bitmap?.close()
+    uncachedBitmap?.close()
+  }
+}
+
+async function drainScans() {
+  reading = true
+  while (pending) {
+    const request = pending
+    pending = null
+    await readScreenshot(request)
+  }
+  reading = false
+}
+
+self.onmessage = ({ data }: MessageEvent<VisionRequest>) => {
+  if (data.type === 'prepare') {
+    void loadModel().catch(() => {})
+  } else if (data.type === 'clear') {
+    latestId = null
+    pending = null
+    clearImage()
+  } else {
+    latestId = data.id
+    pending = data
+    if (!reading) void drainScans()
   }
 }

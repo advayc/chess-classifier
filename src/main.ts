@@ -17,7 +17,7 @@ import {
 import { createCropEditor } from './crop'
 import { playChessSound, prepareChessAudio } from './chess-sound'
 import { boardArrowPath } from './arrow'
-import { createDetectionView, type Detection } from './detection-view'
+import { createDetectionView } from './detection-view'
 import { Engine } from './engine'
 import { gameResults, positionKey, recordMove, uciMove } from './game'
 import { createHistoryView } from './history-view'
@@ -25,14 +25,15 @@ import { icon } from './icons'
 import { outcomeBar } from './outcomes'
 import { checkPgnSource, parsePgn } from './pgn-client'
 import { connectSourceTabs } from './source-tabs'
+import { clipboardImage, SCREENSHOT_EVENT, type ScanResult, type VisionRequest, type VisionResponse } from './screenshot'
 import {
-  CASTLING, FILES, canCastle, fromFen, fromFenInput, fromPlacement,
+  CASTLING, canCastle, fromFen, fromFenInput, fromPlacement,
   indexOfSquare, lineNotation, pieceName, replayLine, squareAt, validatePosition,
   type LineMove,
 } from './position'
 import type { CropRect } from './crop'
 import type {
-  EngineInfo, GameRecord, Move, OpeningRow, OpeningSample, OutcomeCounts, Position, RecordedMove, ValidatedPosition,
+  EngineInfo, GameRecord, Move, OpeningRow, OpeningSample, Position, ValidatedPosition,
 } from './types'
 
 type Origin = 'start' | 'screenshot' | 'fen' | 'manual' | 'game' | 'play'
@@ -46,7 +47,6 @@ interface Analysis {
   fen: string
   turn: 'w' | 'b'
   status: string
-  stage: 'loading' | 'primary' | 'alternatives'
   running: boolean
   lines: AnalysisLine[]
   depth: number
@@ -64,6 +64,7 @@ interface AppState {
   file: File | null
   screenshotUrl: string | null
   scanId: number
+  sourceId: number
   scanning: boolean
   scanFailed: boolean
   analysis: Analysis | null
@@ -75,7 +76,6 @@ interface AppState {
   game: GameRecord | null
   games: GameRecord[]
   opening: OpeningSample | null
-  gameStats: boolean
   pgnLoading: boolean
 }
 
@@ -99,10 +99,10 @@ const detectionView = createDetectionView({
 const state: AppState = {
   position: fromFen(DEFAULT_POSITION), origin: 'start', orientation: 'white',
   uncertain: new Set(), editing: false, palette: 'P', cursor: 0, cropping: false,
-  file: null, screenshotUrl: null, scanId: 0, scanning: false, scanFailed: false,
+  file: null, screenshotUrl: null, scanId: 0, sourceId: 0, scanning: false, scanFailed: false,
   analysis: null, selected: 0, ply: 0,
   current: null, selection: '', targets: [], game: null, games: [],
-  opening: null, gameStats: false, pgnLoading: false,
+  opening: null, pgnLoading: false,
 }
 
 for (const item of $$('[data-icon]')) item.innerHTML = icon(item.dataset.icon ?? '')
@@ -127,7 +127,7 @@ function renderThemeToggle() {
 
 function setTheme(theme: 'light' | 'dark'): void {
   document.documentElement.dataset.theme = theme
-  try { localStorage.setItem('chess-engine-theme', theme) } catch {}
+  try { localStorage.setItem('quiet-square-theme', theme) } catch {}
   renderThemeToggle()
 }
 
@@ -248,9 +248,10 @@ function clearAnalysis() {
   state.analysis = null
   state.ply = 0
   state.selected = 0
-  $('engine-results').hidden = true
-  $('next-move-prompt').hidden = false
-  $('results').hidden = !state.analysis
+  $('engine-status').hidden = true
+  $('search-track').hidden = true
+  showMessage($('engine-error'))
+  $('results').hidden = true
   updateAction()
 }
 
@@ -324,6 +325,12 @@ function currentChess(): Chess {
 function canPlay(): boolean {
   return Boolean(state.current?.chess) && !state.editing && !state.scanning && !state.scanFailed &&
     !state.cropping && !state.pgnLoading && !state.ply
+}
+
+/** Screenshot and FEN loads can be rearranged by dragging, without opening Edit board. */
+function canArrange(): boolean {
+  return (state.origin === 'screenshot' || state.origin === 'fen' || state.origin === 'manual') &&
+    !state.editing && !state.scanning && !state.scanFailed && !state.cropping && !state.pgnLoading && !state.ply
 }
 
 const board = $('chessboard')
@@ -429,6 +436,13 @@ function endPieceDrag({ clientX = 0, clientY = 0, cancel = false }: { clientX?: 
     playMove(matching[0])
     return
   }
+  if (canArrange() && dropIndex >= 0 && dropIndex !== drag.fromIndex) {
+    finish()
+    state.cursor = dropDisplay
+    clearSelection()
+    freeMovePiece(drag.fromIndex, dropIndex)
+    return
+  }
 
   const originRect = drag.originTile.getBoundingClientRect()
   const size = originRect.width
@@ -500,11 +514,11 @@ const tiles = Array.from({ length: 64 }, (_, displayIndex) => {
       suppressSquareClick = false
       return
     }
-    if (!state.editing && !canPlay()) return
+    if (!state.editing && !canPlay() && !canArrange()) return
     state.cursor = displayIndex
     const index = boardIndex(displayIndex)
     if (!state.editing) {
-      selectSquare(squareAt(index))
+      if (canPlay()) selectSquare(squareAt(index))
       return
     }
     state.position.squares[index] = state.palette
@@ -516,22 +530,25 @@ const tiles = Array.from({ length: 64 }, (_, displayIndex) => {
     if (state.ply || state.scanning || state.scanFailed || state.cropping || state.pgnLoading) return
     const editing = state.editing
     const playing = !editing && canPlay()
-    if (!editing && !playing) return
+    const arranging = !editing && canArrange()
+    if (!editing && !playing && !arranging) return
     const index = boardIndex(displayIndex)
     const piece = state.position.squares[index]
     if (!piece) return
+    let playThis = false
     if (playing) {
       const chess = currentChess()
       const onBoard = chess.get(squareAt(index) as Square)
-      if (!onBoard || onBoard.color !== chess.turn()) return
+      playThis = Boolean(onBoard && onBoard.color === chess.turn())
     }
+    if (!editing && !playThis && !arranging) return
     pieceDrag = {
       pointerId: event.pointerId,
       displayIndex,
       fromIndex: index,
       fromSquare: squareAt(index),
       piece,
-      editing,
+      editing: editing || !playThis,
       originTile: tile,
       startX: event.clientX,
       startY: event.clientY,
@@ -540,7 +557,7 @@ const tiles = Array.from({ length: 64 }, (_, displayIndex) => {
     }
   })
   tile.addEventListener('keydown', event => {
-    if (!state.editing && !canPlay()) return
+    if (!state.editing && !canPlay() && !canArrange()) return
     const row = Math.floor(displayIndex / 8)
     const col = displayIndex % 8
     const newIndex = {
@@ -677,10 +694,12 @@ function renderBoard() {
   const squares = activePly ? fromFen(activePly.fen).squares : state.position.squares
   const lastMove = activePly || state.game?.moves[(state.game.ply ?? 0) - 1]
   const playing = Boolean(canPlay())
+  const arranging = canArrange()
   const checkedKing = !activePly && state.current?.chess?.isCheck() ?
     squares.indexOf(state.position.turn === 'w' ? 'K' : 'k') : -1
   board.classList.toggle('editing', state.editing)
   board.classList.toggle('playable', playing)
+  board.classList.toggle('arrangeable', arranging)
   $('editor').hidden = !state.editing
   arrangePalette()
   $<HTMLButtonElement>('edit-board').setAttribute('aria-pressed', String(state.editing))
@@ -727,8 +746,8 @@ function renderBoard() {
     const detail = [uncertain && 'needs review', legalTarget && 'legal destination', checked && 'in check'].filter(Boolean)
     tile.dataset.square = square
     tile.setAttribute('aria-label', [square, pieceName(piece), ...detail].join(', '))
-    tile.tabIndex = (state.editing || playing) && displayIndex === state.cursor ? 0 : -1
-    tile.setAttribute('aria-disabled', String(!state.editing && !playing))
+    tile.tabIndex = (state.editing || playing || arranging) && displayIndex === state.cursor ? 0 : -1
+    tile.setAttribute('aria-disabled', String(!state.editing && !playing && !arranging))
   }
   $('line-controls').hidden = !line.length
   $<HTMLDetailsElement>('game-results').querySelectorAll('button').forEach(button => { button.disabled = Boolean(state.ply) })
@@ -784,6 +803,10 @@ function choosePromotion(moves: Move[]): void {
     return button
   }))
   dialog.showModal()
+  const frame = window.frameElement
+  const top = frame ? Math.max(0, -frame.getBoundingClientRect().top) : 0
+  const height = frame ? Math.min(window.innerHeight - top, window.parent.innerHeight) : window.innerHeight
+  dialog.style.top = `${top + Math.max(12, (height - dialog.offsetHeight) / 2)}px`
 }
 
 function navigateGame(ply: number): void {
@@ -986,18 +1009,19 @@ function openGame(index: number) {
 }
 
 function markSource(file: File | null) {
+  if (!file) cancelScan()
   detectionView.clear()
   if (state.screenshotUrl) URL.revokeObjectURL(state.screenshotUrl)
   state.file = file
+  state.sourceId++
   state.screenshotUrl = file ? URL.createObjectURL(file) : null
   $<HTMLButtonElement>('dropzone').hidden = Boolean(file)
   $('source-preview').hidden = !file
+  $<HTMLImageElement>('source-thumbnail').removeAttribute('src')
   if (file && state.screenshotUrl) {
-    $<HTMLImageElement>('source-thumbnail').src = state.screenshotUrl
     $('source-name').textContent = file.name || 'Pasted screenshot'
     $('source-name').title = file.name || 'Pasted screenshot'
   } else {
-    $<HTMLImageElement>('source-thumbnail').removeAttribute('src')
     showMessage($('scan-error'))
     showMessage($('scan-message'))
   }
@@ -1006,11 +1030,12 @@ function markSource(file: File | null) {
 let vision: Worker | null = null
 let scanTimer: ReturnType<typeof setTimeout> | undefined
 
-function finishScan(error?: string, result?: { orientation: Side; uncertain: number[]; placement: string; detection: Detection; reliable: boolean }) {
+function finishScan(error?: string, result?: ScanResult) {
   clearTimeout(scanTimer)
   $('scan-progress').hidden = true
   state.scanning = false
   state.scanFailed = Boolean(error)
+  if (state.screenshotUrl && (error || result)) $<HTMLImageElement>('source-thumbnail').src = state.screenshotUrl
   showMessage($('scan-error'), error)
   if (!result || !state.screenshotUrl) {
     updateAction()
@@ -1035,11 +1060,45 @@ function retireVision(message: string) {
   if (state.scanning) finishScan(message)
 }
 
-function scan(crop?: CropRect) {
-  if (state.scanning) {
-    vision?.terminate()
-    vision = null
+function cancelScan() {
+  if (!state.file) return
+  state.scanId++
+  sendVision({ type: 'clear' })
+  if (state.scanning) finishScan()
+}
+
+function sendVision(request: VisionRequest) {
+  vision?.postMessage(request)
+}
+
+function ensureVision() {
+  if (vision) return true
+  const message = 'The scanner could not start. Try again in a recent browser or load a FEN.'
+  try {
+    const worker = new Worker(new URL('position-vision.js', runtime), { type: 'module' })
+    vision = worker
+    worker.onmessage = ({ data }: MessageEvent<VisionResponse>) => {
+      if (worker !== vision || data.id !== state.scanId) return
+      if (data.type === 'progress') {
+        $('scan-label').textContent = data.label
+        $('scan-step').textContent = `${data.value} / 3`
+        $<HTMLProgressElement>('scan-meter').value = data.value
+      } else if (data.type === 'result') finishScan(undefined, data.result)
+      else finishScan(data.message)
+    }
+    const error = () => { if (worker === vision) retireVision(message) }
+    worker.onerror = error
+    worker.onmessageerror = error
+    return true
+  } catch {
+    retireVision(message)
+    return false
   }
+}
+
+function scan(crop?: CropRect) {
+  const file = state.file
+  if (!file) return
   clearTimeout(scanTimer)
   detectionView.clear()
   clearAnalysis()
@@ -1057,28 +1116,8 @@ function scan(crop?: CropRect) {
   $<HTMLProgressElement>('scan-meter').value = 1
   updateAction()
   renderBoard()
-  if (!vision) {
-    try {
-      vision = new Worker(new URL('position-vision.js', runtime), { type: 'module' })
-      vision.onmessage = ({ data }) => {
-        if (data.id !== state.scanId) return
-        if (data.label) {
-          $('scan-label').textContent = data.label
-          $('scan-step').textContent = `${data.value} / 3`
-          $<HTMLProgressElement>('scan-meter').value = data.value
-        } else {
-          finishScan(data.error, data.result)
-        }
-      }
-      const error = () => retireVision('The scanner could not start. Try again in a recent browser or load a FEN.')
-      vision.onerror = error
-      vision.onmessageerror = error
-    } catch {
-      retireVision('The scanner could not start. Try again in a recent browser or load a FEN.')
-      return
-    }
-  }
-  vision.postMessage({ id: ++state.scanId, file: state.file, runtime, crop })
+  if (!ensureVision()) return
+  sendVision({ type: 'scan', id: ++state.scanId, sourceId: state.sourceId, file, crop })
   scanTimer = setTimeout(() => retireVision('Scanning took too long. Try cropping the screenshot or load a FEN.'), 45_000)
 }
 
@@ -1098,10 +1137,14 @@ function acceptScreenshot(file?: File | null) {
   scan()
 }
 
-$<HTMLButtonElement>('dropzone').addEventListener('click', () => $<HTMLInputElement>('file-input').click())
-$<HTMLButtonElement>('replace-button').addEventListener('click', () => $<HTMLInputElement>('file-input').click())
+function chooseScreenshot() {
+  if (ensureVision()) sendVision({ type: 'prepare' })
+  $<HTMLInputElement>('file-input').click()
+}
+
+$<HTMLButtonElement>('dropzone').addEventListener('click', chooseScreenshot)
+$<HTMLButtonElement>('replace-button').addEventListener('click', chooseScreenshot)
 $<HTMLButtonElement>('remove-button').addEventListener('click', () => {
-  retireVision('Scan canceled.')
   markSource(null)
   state.scanFailed = false
   if (state.origin === 'screenshot') {
@@ -1145,11 +1188,13 @@ window.addEventListener('drop', event => {
   }
 })
 window.addEventListener('paste', event => {
-  const item = [...(event.clipboardData?.items ?? [])].find(item => item.kind === 'file' && item.type.startsWith('image/'))
-  if (!item) return
+  const image = clipboardImage(event.clipboardData)
+  if (!image) return
   event.preventDefault()
-  acceptScreenshot(item.getAsFile())
+  acceptScreenshot(image)
 })
+window.addEventListener(SCREENSHOT_EVENT, event => acceptScreenshot((event as CustomEvent<File>).detail))
+document.documentElement.dataset.positionReady = 'true'
 
 $<HTMLButtonElement>('crop-button').addEventListener('click', () => {
   clearAnalysis()
@@ -1178,9 +1223,9 @@ function renderGameResults() {
   const imported = key && state.games.length ? gameResults(state.games, key) : []
   const rows = imported.length ? imported : key && state.opening?.positions[key] || []
   const table = $<HTMLDetailsElement>('game-results')
-  state.gameStats = !state.editing && rows.length > 0
-  table.hidden = !state.gameStats
-  if (!state.gameStats || !chess) return
+  const showResults = !state.editing && rows.length > 0
+  table.hidden = !showResults
+  if (!showResults || !chess) return
 
   const legal = new Map(chess.moves({ verbose: true }).map(move => [uciMove(move), move]))
   const total = ([, white, draw, black]: OpeningRow) => white + draw + black
@@ -1220,15 +1265,13 @@ function resultScore(info: EngineInfo, turn: 'w' | 'b') {
 function displayResults() {
   const analysis = state.analysis
   if (!analysis) return
-  $('results').hidden = false
-  $('engine-results').hidden = false
-  $('next-move-prompt').hidden = true
-  $('results').classList.toggle('searching', analysis.running)
-  $('engine-status').dataset.state = analysis.running ? 'running' : analysis.error ? 'error' : 'complete'
+  $('results').hidden = !analysis.lines.length
+  const status = $('engine-status')
+  status.hidden = false
+  status.dataset.state = analysis.running ? 'running' : analysis.error ? 'error' : 'complete'
   if ($('engine-status-label').textContent !== analysis.status) $('engine-status-label').textContent = analysis.status
   $('engine-depth').textContent = analysis.depth ? `Depth ${analysis.depth}` : ''
   $('search-track').hidden = !analysis.running
-  $('engine-loading').hidden = !analysis.running || analysis.stage !== 'loading'
   $<HTMLButtonElement>('deeper').hidden = analysis.running || !analysis.lines.length || analysis.lines[0].info.type === 'mate'
   $('engine-outcomes-label').hidden = !analysis.lines.some(({ info }) => info.wdl)
   showMessage($('engine-error'), analysis.error)
@@ -1244,7 +1287,7 @@ function displayResults() {
     const rank = document.createElement('span')
     rank.className = 'move-rank'
     rank.textContent = index === 0 ?
-      (analysis.stage === 'primary' && (analysis.running || analysis.error) ? 'Leading move' : 'Best move') :
+      (analysis.running ? 'Leading move' : 'Best move') :
       `Alternative ${index}`
     const san = document.createElement('strong')
     san.textContent = line[0].san
@@ -1308,7 +1351,7 @@ function analyze(deep = false) {
       Number(state.position.halfmove) >= 150 ? 'Draw by the 75-move rule' : ''
   const previous = deep && state.analysis?.fen === fen ? state.analysis : null
   const analysis: Analysis = {
-    fen, turn: chess.turn(), status: terminal || 'Loading Stockfish', stage: 'loading',
+    fen, turn: chess.turn(), status: terminal || 'Starting Stockfish…',
     running: !terminal, lines: previous?.lines || [], depth: previous?.depth || 0, error: '',
   }
   state.analysis = analysis
@@ -1321,9 +1364,8 @@ function analyze(deep = false) {
     history,
     legalMoves: moves.map(uciMove),
     deep,
-    update({ stage, best, alternatives }) {
-      analysis.stage = stage
-      analysis.status = stage === 'alternatives' ? 'Checking alternatives' : 'Searching for the best move'
+    update({ best, alternatives }) {
+      analysis.status = 'Searching…'
       if (best && (!previous || best.depth >= analysis.depth)) {
         analysis.depth = best.depth || analysis.depth
         setLines(best, alternatives)
@@ -1349,11 +1391,17 @@ function analyze(deep = false) {
   })
 }
 
-$<HTMLButtonElement>('analyze').addEventListener('click', () => {
+const analyzeButton = $<HTMLButtonElement>('analyze')
+analyzeButton.addEventListener('pointerenter', () => {
+  if (!analyzeButton.disabled) engine.prepare()
+})
+analyzeButton.addEventListener('focus', () => {
+  if (!analyzeButton.disabled) engine.prepare()
+})
+analyzeButton.addEventListener('click', () => {
   if (state.analysis?.running) engine.stop()
   else {
     analyze()
-    if (state.analysis) $('engine-status').scrollIntoView({ block: 'nearest' })
   }
 })
 $<HTMLButtonElement>('deeper').addEventListener('click', () => {

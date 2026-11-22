@@ -1,4 +1,3 @@
-import type { Color } from 'chess.js'
 import type { MoveClass } from './classify'
 
 /** Estimate move quality from the loss in engine-evaluated winning chances.
@@ -65,13 +64,4 @@ export function estimatedRating(
   const anchoringWeight = Math.min(0.55, 0.25 + moveCount / 200)
   const rating = actualRating * anchoringWeight + performance * (1 - anchoringWeight)
   return Math.round(rating)
-}
-
-export function splitByColor(
-  classes: { color: Color; label: MoveClass }[],
-): { w: MoveClass[]; b: MoveClass[] } {
-  return {
-    w: classes.filter(entry => entry.color === 'w').map(entry => entry.label),
-    b: classes.filter(entry => entry.color === 'b').map(entry => entry.label),
-  }
 }

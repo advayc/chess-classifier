@@ -20,7 +20,6 @@ import {
   listedToRecord,
   resolveImport,
   type GameColor,
-  type GameFilter,
   type GameLimit,
   type GamePager,
   type GameSpeed,
@@ -121,18 +120,6 @@ function durationLabel(ms?: number): string {
   return `${Math.round(minutes / 1440)} days`
 }
 
-function plyCount(pgn?: string): number | null {
-  if (!pgn) return null
-  const body = pgn.replace(/\[[^\]]*\]/g, ' ').replace(/\{[^}]*\}/g, ' ').replace(/;[^\n]*/g, ' ')
-  const tokens = body.replace(/\d+\.(\.\.)?/g, ' ').split(/\s+/)
-  let count = 0
-  for (const token of tokens) {
-    if (/^(?:O-O-O|O-O|0-0-0|0-0)[+#]?$/.test(token)) count++
-    else if (/^[NBRQK]?[a-h]?[1-8]?x?[a-h][1-8](?:=[NBRQK])?[+#]?$/.test(token)) count++
-  }
-  return count || null
-}
-
 function formatPlayedAt(iso: string, timeZone?: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric', timeZone })
 }
@@ -151,18 +138,11 @@ function scoreTone(result: string, side: 'white' | 'black'): string {
   return 'score-unknown'
 }
 
-function ClockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <circle cx="12" cy="12" r="8" />
-      <path d="M12 8v4.5l3 2" strokeLinecap="round" />
-    </svg>
-  )
-}
-
 export function ReviewApp() {
   const engineRef = useRef<Engine | null>(null)
   const liveEngineRef = useRef<Engine | null>(null)
+  const variationEngine = useRef<Engine | null>(null)
+  const variationQueue = useRef(Promise.resolve())
   const importedGames = useRef<GameRecord[]>([])
   const pagerRef = useRef<GamePager | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -174,7 +154,6 @@ export function ReviewApp() {
   const [source, setSource] = useState<ImportSource>('chesscom')
   const [speed, setSpeed] = useState<GameSpeed>('all')
   const [color, setColor] = useState<GameColor>('either')
-  const [appliedFilter, setAppliedFilter] = useState<GameFilter>({ speed: 'all', color: 'either' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [list, setList] = useState<ListedGame[]>([])
@@ -208,6 +187,8 @@ export function ReviewApp() {
       engineRef.current?.stop()
       engineRef.current?.dispose()
       liveEngineRef.current?.dispose()
+      variationEngine.current?.dispose()
+      variationEngine.current = null
     }
   }, [])
 
@@ -287,9 +268,9 @@ export function ReviewApp() {
         fen: currentFen,
         history: { startFen: game.startFen, moves: playedMoves.map(move => move.uci) },
         legalMoves: legalMoves.map(uciMove),
-        update: ({ stage, best, alternatives }) => {
-          if (!cancelled && stage === 'alternatives' && best) {
-            setLiveLines({ fen: currentFen, lines: [best, ...(alternatives ?? [])] })
+        update: ({ best, alternatives }) => {
+          if (!cancelled && best) {
+            setLiveLines({ fen: currentFen, lines: [best, ...alternatives] })
           }
         },
         complete: ({ best, alternatives }) => {
@@ -367,7 +348,6 @@ export function ReviewApp() {
     pagerRef.current = null
     setOpenKey(null)
     setShowHistory(true)
-    setAppliedFilter(filter)
     try {
       const result = await resolveImport(text, {
         site: source === 'chesscom' ? 'chesscom' : 'lichess',
@@ -566,8 +546,9 @@ export function ReviewApp() {
     setSelected(null)
     setTargets([])
     setPromotion([])
-    void (async () => {
-      const engine = new Engine(`${window.location.origin}/runtime/`)
+    const engine = variationEngine.current ??= new Engine(`${window.location.origin}/runtime/`)
+    variationQueue.current = variationQueue.current.then(async () => {
+      if (variationEngine.current !== engine) return
       try {
         const legal = new Chess(fen).moves({ verbose: true }).map(uciMove)
         const lines = knownLines ?? await evaluateOnce(engine, fen, history, legal)
@@ -580,8 +561,8 @@ export function ReviewApp() {
         setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, label, bestWin, playedWin } : entry) } : current)
       } catch {
         setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, error: 'Could not evaluate this move.' } : entry) } : current)
-      } finally { engine.dispose() }
-    })()
+      }
+    })
   }
 
   function showBestMove(entry: ReviewedPly) {
@@ -1029,7 +1010,6 @@ export function ReviewApp() {
                     const score = chess.turn() === 'w' ? candidate.score : -candidate.score
                     const moverWin = sideWinChance(candidate.type, candidate.score)
                     const whiteWin = chess.turn() === 'w' ? moverWin : 1 - moverWin
-                    const blackWin = 1 - whiteWin
                     const whitePct = Math.round(whiteWin * 100)
                     const blackPct = 100 - whitePct
                     const winLabel = whitePct >= blackPct ? `White ${whitePct}%` : `Black ${blackPct}%`

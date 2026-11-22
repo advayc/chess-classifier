@@ -10,7 +10,6 @@ await mkdir(runtime, { recursive: true })
 
 const assets: Record<string, string[]> = {
   'stockfish/bin': [
-    'stockfish-19.js', 'stockfish-19.wasm', 'stockfish-19-single.js', 'stockfish-19-single.wasm',
     'stockfish-19-lite.js', 'stockfish-19-lite.wasm', 'stockfish-19-lite-single.js', 'stockfish-19-lite-single.wasm',
   ],
   'onnxruntime-web/dist': ['ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm'],

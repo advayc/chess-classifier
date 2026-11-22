@@ -15,7 +15,7 @@ Open the URL Next.js prints. Use `npm run build` and `npm start` for a productio
 
 ## Game review
 
-Import a Chess.com or Lichess username or game link, paste PGN, or choose a PGN file. When a site blocks a link import, paste its exported PGN. The board shows the players, ratings when available, and the engine's leading move and alternatives for the displayed position. Open **Game results and accuracy** below the board for the graph, classification totals, and estimated game rating.
+Import a Chess.com or Lichess username or game link, paste PGN, or choose a PGN file. When a site blocks a link import, paste its exported PGN. The board shows the players, ratings when available, and the engine's leading move and alternatives for the displayed position. Open **Game results and accuracy** below the board for the graph, classification totals, and estimated game rating. **Game history** also shows a rating prediction from recent results; see [Rating prediction](#rating-prediction).
 
 Play or drag a legal move to branch from the current position. **Back to game** restores the original line. In **Position**, turn on **Edit board** to drag freely, including moves that would be illegal in a game.
 
@@ -31,14 +31,18 @@ In **Position**, a board screenshot is read in a browser worker before Stockfish
 
 Identical tile pixels usually classify the same way because the model runs on a single WASM thread. Board finding and image scaling can still differ slightly across browsers. Prefer a clear, full 2D board shot; crop close to all 64 squares if auto-find fails.
 
+## Rating prediction
+
+**Estimated Elo** in **Game history** predicts a rating from your results and opponent ratings in up to 50 recent games in the same rating pool. It shows a 95% model range, or a one-sided bound for an all-win or all-loss sample. Expected scores follow the usual Elo logistic in rating difference. Chess.com games add 18 points for White's first-move advantage, the constant in equation (4.1) of Jeffrey S. Rosenthal, [*An Investigation Into Probabilities of Streaks in Online Chess*](https://hdsr.mitpress.mit.edu/pub/ex6vbavk/release/2), *Harvard Data Science Review* 7(2), 2025 ([DOI](https://doi.org/10.1162/99608f92.6939122d)). Other games use a 12-point White adjustment.
+
 ### How classification works
 
 Once a position is set (from a reviewed game, FEN, PGN, manual setup, or a confirmed screenshot), Stockfish searches up to three lines per position with a depth target of 14 and a 350 ms time budget. If the played move is outside those lines, the engine searches that move separately. The classifier compares the estimated win chance for the player who moved against the engine's best line. Opening matches can earn Book, a uniquely strong move can earn Great, and a near-best sacrifice can earn Brilliant. Accuracy combines the move labels and feeds a rough game-rating estimate.
 
-After the engine downloads and initializes, search usually takes a fraction of a second per ply. Game length, position complexity, and device speed affect the total. Live variations and position analysis use a deeper search, up to depth 24 or 20 seconds for the primary line. The displayed best move is Stockfish's choice at the completed search depth and can change with a longer search.
+Stockfish 19 Lite loads a roughly 2 MB engine and reuses it for subsequent searches. Game length, position complexity, and device speed affect total review time. Position analysis and live variations search up to three lines in one pass with an 850 ms budget and a depth target of 18. In **Position**, choose **Keep searching** for deeper analysis.
 
 ### Position analysis
 
-Upload a full 2D board screenshot, paste FEN, load PGN, or start from an empty board. Screenshot recognition follows [How screenshot detection works](#how-screenshot-detection-works) above; confirm whose turn it is before searching. Expand **Historical game results** below the workspace for matching completed games from the imported PGN or the bundled Lichess opening sample. Those results are independent of Stockfish's estimates.
+Upload or paste a full 2D board screenshot, enter FEN, load PGN, or start from an empty board. Screenshot recognition follows [How screenshot detection works](#how-screenshot-detection-works) above. Confirm whose turn it is before searching. Expand **Historical game results** below the workspace for matching completed games from the imported PGN or the bundled Lichess opening sample. Those results are independent of Stockfish's estimates.
 
 To rebuild the bundled opening sample, feed the decompressed October 2025 [Lichess standard rated PGN export](https://database.lichess.org/#standard_games) into `npx tsx scripts/build-opening-sample.ts > src/opening-sample.json`. Opening names and ECO codes come from the [Lichess opening dataset](https://github.com/lichess-org/chess-openings). See [open-source credits](public/licenses.html).

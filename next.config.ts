@@ -12,8 +12,8 @@ const config: NextConfig = {
     return [
       { source: '/:path*', headers: isolation },
       {
-        // Stockfish and ONNX binaries are version-pinned; cache them so repeat visits skip the download.
-        source: '/runtime/:file(.*\\.(?:wasm|onnx))',
+        // Keep both the engine worker and its binary in the browser cache.
+        source: '/runtime/:file(.*\\.(?:wasm|onnx)|stockfish-19-lite(?:-single)?\\.js)',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=2592000, stale-while-revalidate=86400' }],
       },
     ]

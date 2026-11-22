@@ -369,6 +369,7 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 .chessboard.editing .square:not([data-piece=""]) { cursor: grab; }
 .chessboard.playable .square { cursor: pointer; }
 .chessboard.playable .square:not([data-piece=""]) { cursor: grab; }
+.chessboard.arrangeable .square:not([data-piece=""]) { cursor: grab; }
 .chessboard.piece-dragging,
 .chessboard.piece-dragging .square { cursor: grabbing; }
 .square.drag-origin img { opacity: 0; }
@@ -516,15 +517,20 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 .history-start { margin-bottom: .2rem; }
 .history-result { display: block; padding: .35rem .45rem 0; color: var(--secondary); }
 #promotion {
+  position: fixed;
+  inset: auto 0 auto;
+  margin: 0 auto;
   max-width: calc(100% - 2rem);
-  padding: 1rem;
+  padding: 1.15rem;
   border: 1px solid var(--border);
   border-radius: 12px;
   color: var(--ink);
   background: var(--paper);
 }
 #promotion::backdrop { background: var(--crop-mask); }
-.promotion-pieces { display: grid; grid-template-columns: repeat(4, 2.55rem); gap: .35rem; margin-block: .65rem; }
+.promotion-pieces { display: grid; grid-template-columns: repeat(4, 2.75rem); gap: .4rem; margin-block: .8rem; }
+#promotion .piece-choice { width: 2.75rem; height: 2.75rem; }
+#promotion form button { width: 100%; }
 
 .editor {
   margin-top: .55rem;
@@ -592,8 +598,7 @@ legend { color: var(--secondary); font-weight: 590; font-size: .875rem; margin-b
 #scan-meter::-webkit-progress-bar { background: var(--track); }
 #scan-meter::-webkit-progress-value { background: var(--accent); transition: width 160ms; }
 #scan-meter::-moz-progress-bar { background: var(--accent); }
-.engine-tag { font-size: .78rem; font-weight: 600; color: var(--secondary); white-space: nowrap; }
-.engine-status { justify-content: flex-start; margin-top: .75rem; font-size: .875rem; color: var(--secondary); }
+.engine-status { justify-content: flex-start; margin-top: .55rem; font-size: .8rem; color: var(--secondary); }
 #engine-depth { margin-left: auto; }
 .status-indicator { width: .42rem; height: .42rem; border-radius: 50%; background: var(--success); flex: none; }
 [data-state=running] .status-indicator { background: var(--accent); }

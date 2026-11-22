@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark light" />
     <script>
+      if (new URLSearchParams(location.search).get('embed') === '1') document.documentElement.classList.add('embed')
       try {
         const theme = localStorage.getItem('quiet-square-theme')
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
-        if (new URLSearchParams(location.search).get('embed') === '1') document.documentElement.classList.add('embed')
       } catch {}
     </script>
     <meta name="description" content="Find the next chess move from a screenshot, FEN, PGN, or custom board with Stockfish." />
@@ -145,7 +145,7 @@
           <dialog id="promotion" aria-labelledby="promotion-label">
             <h3 id="promotion-label">Promote pawn</h3>
             <div id="promotion-pieces" class="promotion-pieces"></div>
-            <form method="dialog"><button type="submit" class="text-button">Cancel</button></form>
+            <form method="dialog"><button type="submit" class="small-button">Cancel</button></form>
           </dialog>
         </section>
 
@@ -167,7 +167,7 @@
               </button>
 
               <div id="source-preview" class="source-preview" hidden>
-                <img id="source-thumbnail" alt="Uploaded screenshot" />
+                <img id="source-thumbnail" alt="" decoding="async" />
                 <div class="source-copy">
                   <span id="source-name"></span>
                   <button id="crop-button" class="text-button" type="button">Crop &amp; rescan</button>
@@ -256,25 +256,20 @@
             </details>
             <p id="position-error" class="inline-message error" role="alert" hidden></p>
             <button id="analyze" class="primary-button" type="button" aria-controls="results"><span data-icon="search"></span><span id="analyze-label">Analyze position</span></button>
+            <div id="engine-status" class="engine-status" hidden>
+              <span class="status-indicator" aria-hidden="true"></span>
+              <span id="engine-status-label" role="status"></span>
+              <span id="engine-depth"></span>
+            </div>
+            <div id="search-track" class="search-track" aria-hidden="true" hidden></div>
+            <p id="engine-error" class="inline-message error" role="alert" hidden></p>
           </section>
 
           <section id="results" class="panel results-panel" aria-labelledby="results-heading" hidden>
-            <div class="section-heading"><h2 id="results-heading">Next move</h2><span class="engine-tag">Stockfish 19</span></div>
-            <p id="next-move-prompt" class="inline-message">Run Stockfish to compare candidate moves.</p>
-            <div id="engine-results" hidden>
-              <div id="engine-status" class="engine-status">
-                <span class="status-indicator" aria-hidden="true"></span>
-                <span id="engine-status-label" role="status"></span>
-                <span id="engine-depth"></span>
-              </div>
-              <div id="search-track" class="search-track" aria-hidden="true"></div>
-              <p id="engine-loading" class="inline-message" hidden>First load downloads the full 95 MB engine.</p>
-              <p id="engine-error" class="inline-message error" role="alert" hidden></p>
-              <p id="engine-outcomes-label" class="outcome-caption" hidden>Engine estimates · White / Draw / Black</p>
-              <div id="move-list" class="move-list"></div>
-              <button id="deeper" type="button" class="text-button deeper" hidden>Keep searching <span data-icon="search"></span></button>
-            </div>
-
+            <h2 id="results-heading">Next move</h2>
+            <p id="engine-outcomes-label" class="outcome-caption" hidden>Engine estimates · White / Draw / Black</p>
+            <div id="move-list" class="move-list"></div>
+            <button id="deeper" type="button" class="text-button deeper" hidden>Keep searching <span data-icon="search"></span></button>
           </section>
         </div>
       </div>
@@ -288,26 +283,9 @@
               </table>
             </details>
 
-      <footer class="site-footer"><span>For studying finished games and puzzles. Boards, pieces, and sounds from <a href="https://www.chess.com/" target="_blank" rel="noopener">Chess.com</a>.</span><a href="/licenses.html" target="_top">Open-source credits</a></footer>
+      <footer class="site-footer"><span>Analysis by Stockfish 19 Lite. Boards, pieces, and sounds from <a href="https://www.chess.com/" target="_blank" rel="noopener">Chess.com</a>.</span><a href="/licenses.html" target="_top">Open-source credits</a></footer>
     </main>
 
     <script type="module" src="/runtime/position-app.js"></script>
-    <script>
-      if (document.documentElement.classList.contains('embed')) {
-        const send = () => parent.postMessage(
-          { source: 'position-frame', height: document.documentElement.scrollHeight },
-          location.origin,
-        )
-        addEventListener('message', event => {
-          if (event.origin !== location.origin || event.data?.source !== 'chess-shell') return
-          const theme = event.data.theme
-          if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme
-          if (event.data.measure) send()
-        })
-        addEventListener('load', send)
-        new ResizeObserver(send).observe(document.body)
-        send()
-      }
-    </script>
   </body>
 </html>

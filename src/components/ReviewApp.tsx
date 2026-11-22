@@ -55,8 +55,26 @@ import { EvalGraph } from './EvalGraph'
 import { HistoryPerformance, type PerformanceSelection } from './HistoryPerformance'
 
 type VariationMove = { id: string; from: string; to: string; uci: string; san: string; label?: MoveClass; bestWin?: number; playedWin?: number; error?: string }
-type Variation = { from: number; returnPly: number; moves: VariationMove[] }
+type BranchMove = VariationMove & { parent: string | null; fork: number; ply: number; evaluating?: boolean; notation: string }
+type Branches = Record<string, BranchMove>
+
+function branchPath(branches: Branches, move?: BranchMove): BranchMove[] {
+  const path: BranchMove[] = []
+  for (let node = move; node; node = node.parent ? branches[node.parent] : undefined) path.push(node)
+  return path.reverse()
+}
 type ImportSource = 'lichess' | 'chesscom' | 'pgn' | 'file'
+const USERNAME_STORAGE_KEY = 'quiet-square-usernames'
+
+function savedUsernames(): Partial<Record<'lichess' | 'chesscom', string>> {
+  try {
+    const saved = JSON.parse(localStorage.getItem(USERNAME_STORAGE_KEY) || '{}')
+    return {
+      lichess: typeof saved?.lichess === 'string' ? saved.lichess : undefined,
+      chesscom: typeof saved?.chesscom === 'string' ? saved.chesscom : undefined,
+    }
+  } catch { return {} }
+}
 
 function ChoiceRow<T extends string>({ label, value, options, onChange }: {
   label: string
@@ -148,10 +166,12 @@ export function ReviewApp() {
   const fileInput = useRef<HTMLInputElement>(null)
   const boardPanel = useRef<HTMLElement>(null)
   const moveList = useRef<HTMLDivElement>(null)
+  const preferredContinuation = useRef(new Map<string, string>())
   const cancelRef = useRef({ cancelled: false })
 
   const [query, setQuery] = useState('')
   const [source, setSource] = useState<ImportSource>('chesscom')
+  const drafts = useRef<Partial<Record<ImportSource, string>>>({})
   const [speed, setSpeed] = useState<GameSpeed>('all')
   const [color, setColor] = useState<GameColor>('either')
   const [busy, setBusy] = useState(false)
@@ -170,13 +190,18 @@ export function ReviewApp() {
   const [ply, setPly] = useState(0)
   const [showArrow, setShowArrow] = useState(true)
   const [reviewStarted, setReviewStarted] = useState(false)
-  const [exploring, setExploring] = useState(false)
-  const [variation, setVariation] = useState<Variation | null>(null)
+  const [branches, setBranches] = useState<Branches>({})
+  const [activeBranch, setActiveBranch] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [targets, setTargets] = useState<string[]>([])
   const [promotion, setPromotion] = useState<Move[]>([])
   const [liveLines, setLiveLines] = useState<{ fen: string; lines: EngineInfo[] } | null>(null)
   const [searchError, setSearchError] = useState<{ fen: string; message: string } | null>(null)
+
+  useEffect(() => {
+    const username = savedUsernames().chesscom
+    if (username) setQuery(current => current || username)
+  }, [])
 
   useEffect(() => {
     const runtime = `${window.location.origin}/runtime/`
@@ -194,13 +219,27 @@ export function ReviewApp() {
 
   const sortedList = useMemo(() => sortHistory(list, historySort), [list, historySort])
   const game = review?.game
-  const originPly = variation?.from ?? 0
-  const maxPly = variation ? variation.from + variation.moves.length : review?.plies.length ?? 0
+  const variationMove = activeBranch ? branches[activeBranch] : undefined
+  const exploring = Boolean(variationMove)
+  const maxPly = review?.plies.length ?? 0
+  const children = useMemo(() => {
+    const index = new Map<string, BranchMove[]>()
+    for (const move of Object.values(branches)) {
+      const parent = move.parent ?? `game:${move.fork}`
+      const siblings = index.get(parent) ?? []
+      siblings.push(move)
+      index.set(parent, siblings)
+    }
+    return index
+  }, [branches])
+  const continuations = activeBranch ? children.get(activeBranch) : undefined
+  const continuation = continuations?.[0]
+  const canAdvance = Boolean(continuation || (variationMove ? variationMove.fork < maxPly : ply < maxPly))
   const playedMoves = useMemo(() => {
     if (!game) return []
-    if (!variation || ply <= variation.from) return game.moves.slice(0, ply)
-    return [...game.moves.slice(0, variation.from), ...variation.moves.slice(0, ply - variation.from)]
-  }, [game, ply, variation])
+    if (!variationMove) return game.moves.slice(0, ply)
+    return [...game.moves.slice(0, variationMove.fork), ...branchPath(branches, variationMove)]
+  }, [game, ply, branches, variationMove])
   const currentFen = useMemo(() => game ? fenAtPly(game.startFen, playedMoves, playedMoves.length) : DEFAULT_POSITION, [game, playedMoves])
   const chess = useMemo(() => new Chess(currentFen), [currentFen])
   const currentPlyReview = exploring ? undefined : review?.plies[ply - 1]
@@ -223,22 +262,19 @@ export function ReviewApp() {
     const move = active.getBoundingClientRect()
     if (move.top < viewport.top) list.scrollTop += move.top - viewport.top
     else if (move.bottom > viewport.bottom) list.scrollTop += move.bottom - viewport.bottom
-  }, [ply, exploring, reviewStarted])
+  }, [ply, activeBranch, reviewStarted])
   const lastMove = playedMoves.at(-1)
   const cachedLines = exploring ? undefined : review?.plies[ply]?.lines
   const needsSearch = Boolean(game && !busy && !cachedLines)
   const legalMoves = useMemo(() => chess.moves({ verbose: true }), [chess])
   const candidates = cachedLines ?? (liveLines?.fen === currentFen ? liveLines.lines : [])
   const bestUci = candidates[0]?.pv[0]
-  const variationMove = variation && ply > variation.from ? variation.moves[ply - variation.from - 1] : undefined
   const variationLabel = variationMove?.label
   const moveClass = currentPlyReview?.label ?? variationLabel
   const variationBestWin = variationMove?.bestWin
   const variationPlayedWin = variationMove?.playedWin
   const bestArrow = showArrow && bestUci ? { from: bestUci.slice(0, 2), to: bestUci.slice(2, 4) } : null
-  const currentEval = exploring && candidates[0]
-    ? (chess.turn() === 'w' ? sideWinChance(candidates[0].type, candidates[0].score) : 1 - sideWinChance(candidates[0].type, candidates[0].score))
-    : review
+  const currentEval = review && !exploring
     ? review.graph[Math.min(ply, review.graph.length - 1)] ?? 0.5
     : candidates[0]
       ? chess.turn() === 'w'
@@ -302,8 +338,9 @@ export function ReviewApp() {
     setPromotion([])
     setProgress({ done: 0, total: record.moves.length })
     setPly(0)
-    setExploring(false)
-    setVariation(null)
+    setActiveBranch(null)
+    setBranches({})
+    preferredContinuation.current.clear()
     setSelected(null)
     setTargets([])
     const plies: GameReview['plies'] = []
@@ -388,6 +425,10 @@ export function ReviewApp() {
       }
       if (result.list) {
         const pager = result.pager ?? null
+        if (pager && result.list.length) {
+          const site = result.kind === 'chesscom-user' ? 'chesscom' : 'lichess'
+          try { localStorage.setItem(USERNAME_STORAGE_KEY, JSON.stringify({ ...savedUsernames(), [site]: pager.username })) } catch { /* storage unavailable */ }
+        }
         pagerRef.current = pager
         setList(result.list)
         setListUser(pager?.username ?? '')
@@ -466,16 +507,35 @@ export function ReviewApp() {
     engineRef.current?.stop()
   }
 
-  const goPly = useCallback((next: number | ((current: number) => number)) => {
-    setPly(current => Math.max(originPly, Math.min(maxPly, typeof next === 'number' ? next : next(current))))
+  const selectMove = useCallback((position: number, branch: string | null = null) => {
+    setPly(position)
+    setActiveBranch(branch)
     setPromotion([])
     setSelected(null)
     setTargets([])
-  }, [originPly, maxPly])
+  }, [])
+
+  const goPly = useCallback((position: number) => {
+    selectMove(Math.max(0, Math.min(maxPly, position)))
+  }, [maxPly, selectMove])
+
+  const stepMove = useCallback((direction: -1 | 1) => {
+    if (!variationMove) {
+      goPly(ply + direction)
+    } else if (direction < 0) {
+      if (variationMove.parent) preferredContinuation.current.set(variationMove.parent, variationMove.id)
+      selectMove(ply - 1, variationMove.parent)
+    } else if (continuation) {
+      const next = continuations?.find(move => move.id === preferredContinuation.current.get(variationMove.id)) ?? continuation
+      selectMove(next.ply, next.id)
+    } else if (canAdvance) {
+      goPly(variationMove.fork + 1)
+    }
+  }, [variationMove, continuations, continuation, canAdvance, ply, goPly, selectMove])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.isComposing || maxPly <= originPly) return
+      if (event.defaultPrevented || event.isComposing || !maxPly && !exploring) return
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
       if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
       const panel = document.getElementById('mode-panel-review')
@@ -487,17 +547,17 @@ export function ReviewApp() {
       if (event.key === 'Home' || event.key === 'End') {
         if (!(target instanceof Node && boardPanel.current?.contains(target))) return
         event.preventDefault()
-        goPly(event.key === 'Home' ? originPly : maxPly)
+        goPly(event.key === 'Home' ? 0 : maxPly)
         return
       }
 
       event.preventDefault()
       const direction = event.key === 'ArrowLeft' ? -1 : 1
-      goPly(current => current + direction)
+      stepMove(direction)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [goPly, originPly, maxPly])
+  }, [goPly, stepMove, maxPly, exploring])
 
   function jumpKeyMoment(direction: 1 | -1) {
     if (!review) return
@@ -511,41 +571,57 @@ export function ReviewApp() {
     }
   }
 
-  function startExplore(from = ply) {
-    if (!review || !reviewStarted || busy) return
-    setPly(from)
-    setExploring(true)
-    setVariation({ from, returnPly: ply, moves: [] })
-    setSelected(null)
-    setTargets([])
-    setPromotion([])
+  function leaveExplore() {
+    goPly(variationMove?.fork ?? ply)
   }
 
-  function leaveExplore() {
-    if (variation) setPly(variation.returnPly)
-    setExploring(false)
-    setVariation(null)
-    setSelected(null)
-    setTargets([])
-    setPromotion([])
+  function addLine(
+    moves: ReadonlyArray<Pick<VariationMove, 'from' | 'to' | 'uci' | 'san'> & { before: string }>,
+    position: number,
+    parent: string | null,
+    evaluate = false,
+  ) {
+    const additions: Branches = {}
+    let firstBranch: BranchMove | undefined
+    const fork = parent ? branches[parent].fork : position
+    for (const move of moves) {
+      if (!parent && game?.moves[position]?.uci === move.uci) {
+        position++
+        continue
+      }
+      const existing = children.get(parent ?? `game:${position}`)?.find(entry => entry.uci === move.uci)
+      const id = existing?.id ?? crypto.randomUUID()
+      if (!existing) {
+        const [, turn, , , , number] = move.before.split(' ')
+        additions[id] = {
+          ...move, id, parent, fork: parent ? fork : position, ply: position + 1,
+          evaluating: evaluate, notation: `${number}${turn === 'w' ? '.' : '…'}`,
+        }
+      }
+      firstBranch ??= additions[id] ?? branches[id]
+      if (parent) preferredContinuation.current.set(parent, id)
+      parent = id
+      position++
+    }
+    setBranches(current => ({ ...current, ...additions }))
+    return firstBranch
   }
 
   function playVariation(move: Move, position = ply, knownLines?: EngineInfo[]) {
     if (!game) return
-    const from = variation?.from ?? position
-    const returnPly = variation?.returnPly ?? ply
-    const moves = variation?.moves.slice(0, position - from) ?? []
-    const id = crypto.randomUUID()
+    const parent = position === ply && !knownLines ? activeBranch : null
     const uci = uciMove(move)
+    const node = addLine([{ from: move.from, to: move.to, san: move.san, uci, before: move.before }], position, parent, true)
+    if (!node) {
+      goPly(position + 1)
+      return
+    }
+    const { id } = node
+    selectMove(node.ply, id)
+    if (branches[id]) return
     const fen = move.before
-    const precedingMoves = position === ply ? playedMoves : game.moves.slice(0, position)
+    const precedingMoves = parent ? playedMoves : game.moves.slice(0, position)
     const history = { startFen: game.startFen, moves: precedingMoves.map(entry => entry.uci) }
-    setExploring(true)
-    setVariation({ from, returnPly, moves: [...moves, { id, from: move.from, to: move.to, uci, san: move.san }] })
-    setPly(position + 1)
-    setSelected(null)
-    setTargets([])
-    setPromotion([])
     const engine = variationEngine.current ??= new Engine(`${window.location.origin}/runtime/`)
     variationQueue.current = variationQueue.current.then(async () => {
       if (variationEngine.current !== engine) return
@@ -558,9 +634,9 @@ export function ReviewApp() {
         const bestWin = sideWinChance(best.type, best.score)
         const playedWin = sideWinChance(played.type, played.score)
         const label = classifyMove({ playedUci: uci, bestUci: best.pv[0], bestWin, playedWin, secondWin: lines[1] ? sideWinChance(lines[1].type, lines[1].score) : undefined, forced: legal.length === 1, color: move.color })
-        setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, label, bestWin, playedWin } : entry) } : current)
+        setBranches(current => current[id] ? { ...current, [id]: { ...current[id], evaluating: false, label, bestWin, playedWin } } : current)
       } catch {
-        setVariation(current => current ? { ...current, moves: current.moves.map(entry => entry.id === id ? { ...entry, error: 'Could not evaluate this move.' } : entry) } : current)
+        setBranches(current => current[id] ? { ...current, [id]: { ...current[id], evaluating: false, error: 'Could not evaluate this move.' } } : current)
       }
     })
   }
@@ -589,6 +665,27 @@ export function ReviewApp() {
     const next = legalMoves.filter(move => move.from === square && square !== selected)
     setSelected(next.length ? square : null)
     setTargets(next.map(move => move.to))
+  }
+
+  function renderBranches(parent: string, nested = false): React.ReactNode {
+    const moves = children.get(parent)
+    if (!moves) return null
+    return (
+      <ul className={nested ? `review-branch-children${moves.length > 1 ? ' has-fork' : ''}` : 'review-branches'}>
+        {moves.map(move => (
+          <li key={move.id}>
+            <button type="button" className="review-branch-move"
+              aria-current={activeBranch === move.id ? 'step' : undefined}
+              onClick={() => selectMove(move.ply, move.id)}>
+              <span className="review-branch-number">{move.notation}</span>
+              <span>{move.san}</span>
+              {move.label ? <ClassIcon label={move.label} size={14} /> : null}
+            </button>
+            {renderBranches(move.id, true)}
+          </li>
+        ))}
+      </ul>
+    )
   }
 
   const summary = review?.summary
@@ -658,19 +755,19 @@ export function ReviewApp() {
           ) : null}
           <div className="board-footer review-footer">
             <div className="line-controls">
-              <button type="button" className="icon-button" aria-label="First move" disabled={!review || ply <= originPly} onClick={() => goPly(originPly)}
+              <button type="button" className="icon-button" aria-label="First move" disabled={!review || ply === 0} onClick={() => goPly(0)}
                 dangerouslySetInnerHTML={{ __html: icon('chevrons-left') }} />
-              <button type="button" className="icon-button" aria-label="Previous move" aria-keyshortcuts="ArrowLeft" disabled={!review || ply <= originPly} onClick={() => goPly(ply - 1)}
+              <button type="button" className="icon-button" aria-label="Previous move" aria-keyshortcuts="ArrowLeft" disabled={!review || ply === 0} onClick={() => stepMove(-1)}
                 dangerouslySetInnerHTML={{ __html: icon('chevron-left') }} />
-              <span>{review ? `${ply} / ${exploring ? maxPly : review.game.moves.length}` : '—'}</span>
-              <button type="button" className="icon-button" aria-label="Next move" aria-keyshortcuts="ArrowRight" disabled={!review || ply >= maxPly} onClick={() => goPly(ply + 1)}
+              <span>{review ? (exploring ? 'Variation' : `${ply} / ${review.game.moves.length}`) : '—'}</span>
+              <button type="button" className="icon-button" aria-label={exploring && !continuation ? 'Next move in game' : 'Next move'} aria-keyshortcuts="ArrowRight" disabled={!review || !canAdvance} onClick={() => stepMove(1)}
                 dangerouslySetInnerHTML={{ __html: icon('chevron-right') }} />
               <button type="button" className="icon-button" aria-label="Last move" disabled={!review} onClick={() => goPly(maxPly)}
                 dangerouslySetInnerHTML={{ __html: icon('chevrons-right') }} />
             </div>
             <div className="line-controls">
               {!exploring ? (
-                <button type="button" className="text-button" disabled={!boardEnabled} onClick={() => startExplore()}>Explore</button>
+                boardEnabled ? <span>Play a move to branch</span> : null
               ) : (
                 <button type="button" className="text-button" onClick={leaveExplore}>Back to game</button>
               )}
@@ -692,7 +789,11 @@ export function ReviewApp() {
               <ChoiceRow
                 label="Import from"
                 value={source}
-                onChange={setSource}
+                onChange={next => {
+                  drafts.current[source] = query
+                  setSource(next)
+                  setQuery(drafts.current[next] ?? (next === 'chesscom' || next === 'lichess' ? savedUsernames()[next] : '') ?? '')
+                }}
                 options={[
                   { value: 'chesscom', label: 'Chess.com', icon: 'chesscom', brand: 'chesscom' },
                   { value: 'lichess', label: 'Lichess', icon: 'lichess' },
@@ -925,7 +1026,7 @@ export function ReviewApp() {
                   {currentPlyReview ? coachLine(currentPlyReview)
                     : variationMove && variationBestWin !== undefined && variationPlayedWin !== undefined
                       ? `${Math.round(variationPlayedWin * 100)}% estimated win chance for the mover. The best move offered ${Math.round(variationBestWin * 100)}%.`
-                      : variationMove ? variationMove.error ?? 'Evaluating this alternative…'
+                      : variationMove ? variationMove.error ?? (variationMove.evaluating ? 'Evaluating this alternative…' : 'Engine continuation')
                         : exploring ? 'Play a different move on the board to see how it scores.'
                           : 'Step through the game or jump to its next key move.'}
                 </p>
@@ -934,64 +1035,59 @@ export function ReviewApp() {
                 <div className="review-guide-actions">
                   {hasAlternative ? (
                     <>
-                      <button type="button" className="small-button" disabled={busy} onClick={() => startExplore(currentPlyReview.ply - 1)}>Retry move</button>
+                      <button type="button" className="small-button" disabled={busy} onClick={() => goPly(currentPlyReview.ply - 1)}>Retry move</button>
                       <button type="button" className="small-button" disabled={busy} onClick={() => showBestMove(currentPlyReview)}>Show best move</button>
                     </>
                   ) : <button type="button" className="small-button" onClick={leaveExplore}>Back to game</button>}
                 </div>
               ) : null}
-              <div className="review-guide-nav">
-                <div className="line-controls">
-                  <button type="button" className="icon-button" aria-label="Previous move" disabled={ply <= originPly} onClick={() => goPly(ply - 1)} dangerouslySetInnerHTML={{ __html: icon('chevron-left') }} />
-                  <span>{exploring ? `${ply - originPly} / ${maxPly - originPly}` : `${ply} / ${maxPly}`}</span>
-                  <button type="button" className="icon-button" aria-label="Next move" disabled={ply >= maxPly} onClick={() => goPly(ply + 1)} dangerouslySetInnerHTML={{ __html: icon('chevron-right') }} />
-                </div>
-                {!exploring && (previousKeyMove || nextKeyMove) ? (
+              {!exploring && (previousKeyMove || nextKeyMove) ? (
+                <div className="review-guide-nav">
                   <div className="review-guide-key-nav">
                     <button type="button" className="text-button" disabled={!previousKeyMove} onClick={() => jumpKeyMoment(-1)}>Previous key</button>
                     <button type="button" className="small-button" disabled={!nextKeyMove} onClick={() => jumpKeyMoment(1)}>Next key move</button>
                   </div>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </section>
           ) : null}
 
           {review && reviewStarted ? (
             <section className="panel">
-              <h2>Moves</h2>
-              <p className="outcome-caption">{review.opening ? `${review.opening.eco} · ${review.opening.name}` : 'No named opening'}</p>
-              {variation?.moves.length ? (
-                <div className="source-actions" aria-label="Variation moves">
-                  {variation.moves.map((move, index) => (
-                    <button
-                      className="text-button" key={move.id} type="button"
-                      aria-pressed={ply === variation.from + index + 1}
-                      onClick={() => goPly(variation.from + index + 1)}
-                    >{move.san} {move.label ? <ClassIcon label={move.label} size={14} /> : <span>{move.error ? 'Evaluation failed' : 'Analyzing…'}</span>}</button>
-                  ))}
+              <div className="review-move-list-heading">
+                <h2>Moves</h2>
+                <div className="line-controls">
+                  <button type="button" className="icon-button" aria-label="Previous move" disabled={ply === 0} onClick={() => stepMove(-1)} dangerouslySetInnerHTML={{ __html: icon('chevron-left') }} />
+                  <span>{exploring ? 'Variation' : `${ply} / ${maxPly}`}</span>
+                  <button type="button" className="icon-button" aria-label={exploring && !continuation ? 'Next move in game' : 'Next move'} disabled={!canAdvance} onClick={() => stepMove(1)} dangerouslySetInnerHTML={{ __html: icon('chevron-right') }} />
                 </div>
-              ) : null}
-              <button type="button" className={ply === 0 ? 'review-start active' : 'review-start'} onClick={() => { if (exploring) leaveExplore(); setPly(0); setSelected(null); setTargets([]) }}>Start</button>
+              </div>
+              <p className="outcome-caption">{review.opening ? `${review.opening.eco} · ${review.opening.name}` : 'No named opening'}</p>
               <div className="review-moves-paired" ref={moveList} role="group" aria-label="Game move list">
+                <button type="button" className={ply === 0 ? 'review-start active' : 'review-start'}
+                  aria-current={ply === 0 ? 'step' : undefined} onClick={() => goPly(0)}>Start</button>
+                {renderBranches('game:0')}
                 {pairedMoves.map(([moveNumber, { w: white, b: black }]) => {
-                  const renderMove = (entry?: ReviewedPly) => entry ? (
+                  const renderMove = (side: 'white' | 'black', entry?: ReviewedPly) => entry ? (
                     <button
                       key={entry.ply}
                       type="button"
-                      className={!exploring && ply === entry.ply ? 'paired-move active' : 'paired-move'}
+                      className={`paired-move paired-move-${side}${!exploring && ply === entry.ply ? ' active' : ''}`}
                       aria-current={!exploring && ply === entry.ply ? 'step' : undefined}
-                      onClick={() => { if (exploring) leaveExplore(); setPly(entry.ply); setSelected(null); setTargets([]) }}
+                      onClick={() => goPly(entry.ply)}
                       title={CLASS_LABEL[entry.label]}
                     >
                       <span>{entry.move.san}</span>
                       <ClassIcon label={entry.label} size={14} />
                     </button>
-                  ) : <span className="paired-move empty" aria-hidden="true" />
+                  ) : <span className={`paired-move paired-move-${side} empty`} aria-hidden="true" />
                   return (
                     <div className="paired-move-row" key={moveNumber}>
                       <span className="paired-move-number">{moveNumber}.</span>
-                      {renderMove(white)}
-                      {renderMove(black)}
+                      {renderMove('white', white)}
+                      {white ? renderBranches(`game:${white.ply}`) : null}
+                      {renderMove('black', black)}
+                      {black ? renderBranches(`game:${black.ply}`) : null}
                     </div>
                   )
                 })}
@@ -1001,7 +1097,7 @@ export function ReviewApp() {
           ) : null}
 
           {review && reviewStarted ? (
-            <details className="panel review-engine-lines">
+            <details className="panel review-engine-lines" open>
               <summary>Engine lines</summary>
               {candidates.length ? (
                 <ol className="review-lines">
@@ -1017,7 +1113,10 @@ export function ReviewApp() {
                       <li key={candidate.pv[0]} className="move-row">
                         <div className="move-heading">
                           <span className="move-rank">{index === 0 ? 'Best move' : `Alternative ${index}`}</span>
-                          <strong>{line[0]?.san ?? candidate.pv[0]}</strong>
+                          <button type="button" className="review-candidate" disabled={busy || !line.length} onClick={() => {
+                            const first = addLine(line, ply, activeBranch)
+                            selectMove(ply + 1, first?.ply === ply + 1 ? first.id : null)
+                          }}>{line[0]?.san ?? candidate.pv[0]}</button>
                           <span className="move-score" title={`White evaluation at depth ${candidate.depth}`}>
                             {candidate.type === 'mate' ? `${score < 0 ? '−' : '+'}M${Math.abs(score)}` : (score / 100).toFixed(2)}
                           </span>

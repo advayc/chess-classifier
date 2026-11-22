@@ -762,3 +762,66 @@ button.paired-move:focus-visible { outline-offset: -2px; }
 .review-guide-key-nav .small-button { border-color: var(--button-fill); background: var(--button-fill); color: var(--button-text); }
 .review-guide-key-nav .small-button:hover:enabled { background: var(--button-hover); }
 .review-engine-lines > summary { cursor: pointer; font-size: .9rem; font-weight: 650; }
+
+.paired-move-white { grid-column: 2; }
+.paired-move-black { grid-column: 3; }
+.review-branches,
+.review-branch-children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.review-branches {
+  grid-column: 1 / -1;
+  margin: .15rem .35rem .3rem 1rem;
+  padding: .15rem .3rem;
+  border-inline-start: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.review-branch-children.has-fork {
+  margin-inline-start: .35rem;
+  border-inline-start: 1px solid var(--border);
+}
+.review-branch-move,
+.review-candidate {
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--ink);
+  background: transparent;
+  font-weight: 650;
+}
+.review-branch-move {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  width: 100%;
+  min-height: 1.8rem;
+  padding: .15rem .4rem;
+  text-align: left;
+  font-size: .82rem;
+}
+.review-branch-number {
+  min-width: 2rem;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.review-branch-move[aria-current='step'],
+.review-branch-move:hover,
+.review-candidate:hover:not(:disabled) {
+  background: var(--accent-mist);
+  border-color: var(--border);
+}
+.review-candidate {
+  padding: .15rem .4rem;
+  border-color: var(--border);
+}
+.review-move-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+.review-move-list-heading .line-controls {
+  color: var(--secondary);
+  font-size: .8rem;
+}

@@ -1,6 +1,6 @@
 {
-  "name": "Quiet Square",
-  "short_name": "Quiet Square",
+  "name": "Chess Engine",
+  "short_name": "Chess Engine",
   "description": "Infinite chess game review and best-move analysis in the browser.",
   "start_url": "/",
   "display": "standalone",

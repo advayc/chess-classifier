@@ -11,7 +11,7 @@ export const viewport: Viewport = {
   colorScheme: 'dark light',
 }
 
-const title = 'Quiet Square · Infinite chess game review'
+const title = 'Chess Engine · Game review'
 const description =
   'Review chess games without a daily limit and find the best move in any position. Near-instant (<1s) move classification, then Stockfish surfaces the next best lines. Import from Chess.com or Lichess, or drop in a screenshot, FEN, or PGN — all in the browser.'
 
@@ -19,10 +19,10 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://chess.advay.ca'),
   title: {
     default: title,
-    template: '%s · Quiet Square',
+    template: '%s · Chess Engine',
   },
   description,
-  applicationName: 'Quiet Square',
+  applicationName: 'Chess Engine',
   keywords: [
     'chess',
     'chess game review',
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/' },
   openGraph: {
     type: 'website',
-    siteName: 'Quiet Square',
+    siteName: 'Chess Engine',
     url: 'https://chess.advay.ca',
     title,
     description,
@@ -53,7 +53,7 @@ export const metadata: Metadata = {
         url: '/og.png',
         width: 1200,
         height: 630,
-        alt: 'Quiet Square — infinite chess game review and best-move analysis',
+        alt: 'Chess Engine — game review and position analysis',
         type: 'image/png',
       },
     ],
